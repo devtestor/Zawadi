@@ -23,6 +23,7 @@
     "@vibecodeapp/cloud-studio": "^0.2.4",
     "@vibecodeapp/proxy": "^2.0.3",
     "better-auth": "^1.5.6",
+    "dotenv": "^17.3.1",
     "hono": "4.6.0",
     "zod": "4.1.11"
   }
