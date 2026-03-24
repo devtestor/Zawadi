@@ -1,0 +1,74 @@
+import "@vibecodeapp/proxy"; // DO NOT REMOVE OTHERWISE VIBECODE PROXY WILL NOT WORK
+import { Hono } from "hono";
+import { cors } from "hono/cors";
+import { logger } from "hono/logger";
+import { auth } from "./auth";
+import { env } from "./env";
+import { listingsRouter } from "./routes/listings";
+import { favoritesRouter } from "./routes/favorites";
+import { usersRouter } from "./routes/users";
+
+const app = new Hono<{
+  Variables: {
+    user: typeof auth.$Infer.Session.user | null;
+    session: typeof auth.$Infer.Session.session | null;
+  };
+}>();
+
+// CORS
+const allowed = [
+  /^http:\/\/localhost(:\d+)?$/,
+  /^http:\/\/127\.0\.0\.1(:\d+)?$/,
+  /^https:\/\/.*\.dev\.vibecode\.run$/,
+  /^https:\/\/.*\.vibecode\.run$/,
+  /^https:\/\/.*\.vibecodeapp\.com$/,
+  /^https:\/\/.*\.vibecode\.dev$/,
+  /^https:\/\/vibecode\.dev$/,
+];
+
+app.use(
+  "*",
+  cors({
+    origin: (origin) => {
+      if (!origin) return origin;
+      return allowed.some((r) => r.test(origin)) ? origin : null;
+    },
+    allowHeaders: ["Content-Type", "Authorization", "Cookie"],
+    allowMethods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    credentials: true,
+  })
+);
+
+app.use("*", logger());
+
+// Auth middleware
+app.use("*", async (c, next) => {
+  const session = await auth.api.getSession({ headers: c.req.raw.headers });
+  if (!session) {
+    c.set("user", null);
+    c.set("session", null);
+  } else {
+    c.set("user", session.user);
+    c.set("session", session.session);
+  }
+  await next();
+});
+
+// Health
+app.get("/health", (c) => c.json({ status: "ok" }));
+
+// Auth routes
+app.on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw));
+
+// App routes
+app.route("/api/listings", listingsRouter);
+app.route("/api/favorites", favoritesRouter);
+app.route("/api/me", usersRouter);
+
+const port = parseInt(env.PORT);
+console.log(`Started development server: http://localhost:${port}`);
+
+export default {
+  port,
+  fetch: app.fetch,
+};
