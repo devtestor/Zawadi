@@ -26,10 +26,11 @@ export default function BoostScreen() {
     if (!id) return;
     setLoading(true);
     try {
-      const { checkoutUrl } = await api.post<{ checkoutUrl: string; txRef: string }>(
-        `/api/boost/${id}`,
-        { tier: selected }
-      );
+      const { checkoutUrl } = await api.post<{
+        checkoutUrl: string;
+        txRef: string;
+        tier: { chargedAmount: number; chargedCurrency: string };
+      }>(`/api/boost/${id}`, { tier: selected });
       const result = await WebBrowser.openBrowserAsync(checkoutUrl);
       if (result.type === "cancel" || result.type === "dismiss") {
         queryClient.invalidateQueries({ queryKey: ["listing", id] });
@@ -106,7 +107,7 @@ export default function BoostScreen() {
 
         <View style={{ marginTop: 24, padding: 16, backgroundColor: "#12121A", borderRadius: 14, borderWidth: 1, borderColor: "#1E1E2A" }}>
           <Text style={{ color: "#888", fontSize: 12, lineHeight: 20 }}>
-            Payment via Flutterwave — pay with MTN Mobile Money, Airtel Money, M-Pesa, bank card, or bank transfer across Africa.
+            Payment via Paystack — pay with bank card, bank transfer, USSD, or mobile money across Africa.
           </Text>
         </View>
       </ScrollView>
@@ -118,7 +119,7 @@ export default function BoostScreen() {
               <ActivityIndicator color="#0A0A0F" />
             ) : (
               <Text style={{ color: "#0A0A0F", fontSize: 17, fontWeight: "800" }}>
-                Pay ${TIERS.find((t) => t.key === selected)?.amount} with Flutterwave
+                Pay ${TIERS.find((t) => t.key === selected)?.amount} with Paystack
               </Text>
             )}
           </LinearGradient>
