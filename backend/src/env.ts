@@ -9,6 +9,8 @@ const envSchema = z.object({
   DATABASE_URL: z.string().default("file:./prisma/dev.db"),
   BETTER_AUTH_SECRET: z.string().min(1, "BETTER_AUTH_SECRET is required"),
   BACKEND_URL: z.string().optional().default("http://localhost:3000"),
+  FLUTTERWAVE_SECRET_KEY: z.string().optional().default(""),
+  FLUTTERWAVE_WEBHOOK_SECRET: z.string().optional().default(""),
 });
 
 export const env = envSchema.parse(process.env);

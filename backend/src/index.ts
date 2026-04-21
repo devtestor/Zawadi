@@ -7,6 +7,7 @@ import { env } from "./env";
 import { listingsRouter } from "./routes/listings";
 import { favoritesRouter } from "./routes/favorites";
 import { usersRouter } from "./routes/users";
+import { boostRouter } from "./routes/boost";
 
 const app = new Hono<{
   Variables: {
@@ -90,6 +91,7 @@ app.on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw));
 app.route("/api/listings", listingsRouter);
 app.route("/api/favorites", favoritesRouter);
 app.route("/api/me", usersRouter);
+app.route("/api/boost", boostRouter);
 
 const port = parseInt(env.PORT);
 console.log(`Started development server: http://localhost:${port}`);

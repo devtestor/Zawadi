@@ -48,7 +48,7 @@ router.get("/", async (c) => {
       user: { select: { id: true, name: true, image: true, phone: true } },
       _count: { select: { favorites: true } },
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: [{ boosted: "desc" }, { createdAt: "desc" }],
     take: 50,
   });
 
@@ -58,7 +58,7 @@ router.get("/", async (c) => {
 // GET /api/listings/featured - featured listings
 router.get("/featured", async (c) => {
   const listings = await prisma.listing.findMany({
-    where: { status: "active" },
+    where: { status: "active", boosted: true, boostedUntil: { gt: new Date() } },
     include: {
       images: { orderBy: { order: "asc" }, take: 1 },
       user: { select: { id: true, name: true, image: true } },

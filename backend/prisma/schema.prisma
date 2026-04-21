@@ -114,6 +114,26 @@ model Listing {
 
   // Features (stored as JSON string)
   features     String?
+
+  // Boost (featured listing via Flutterwave)
+  boosted       Boolean   @default(false)
+  boostedUntil  DateTime?
+  boostPayments BoostPayment[]
+}
+
+model BoostPayment {
+  id              String   @id @default(cuid())
+  listingId       String
+  listing         Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  userId          String
+  txRef           String   @unique          // our reference sent to Flutterwave
+  flutterwaveId   String?                   // Flutterwave's tx id after success
+  amount          Float
+  currency        String
+  days            Int
+  status          String   @default("pending") // "pending" | "successful" | "failed"
+  createdAt       DateTime @default(now())
+  verifiedAt      DateTime?
 }
 
 model ListingImage {

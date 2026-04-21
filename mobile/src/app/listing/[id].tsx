@@ -23,6 +23,7 @@ import {
   Phone,
   Mail,
   CheckCircle,
+  Zap,
 } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -183,11 +184,19 @@ export default function ListingDetailScreen() {
 
         {/* Content */}
         <View style={{ paddingHorizontal: 20, paddingTop: 24 }}>
-          {listing.listingType === "rent" ? (
-            <View style={{ alignSelf: "flex-start", backgroundColor: "#1A6B4A22", borderWidth: 1, borderColor: "#1A6B4A66", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, marginBottom: 8 }}>
-              <Text style={{ color: "#1A6B4A", fontSize: 11, fontWeight: "800", letterSpacing: 0.5 }}>🔑 FOR RENT</Text>
-            </View>
-          ) : null}
+          <View style={{ flexDirection: "row", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+            {listing.boosted ? (
+              <View style={{ backgroundColor: "#D4A84322", borderWidth: 1, borderColor: "#D4A84366", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <Zap size={11} color="#D4A843" fill="#D4A843" strokeWidth={2} />
+                <Text style={{ color: "#D4A843", fontSize: 11, fontWeight: "800", letterSpacing: 0.5 }}>FEATURED</Text>
+              </View>
+            ) : null}
+            {listing.listingType === "rent" ? (
+              <View style={{ backgroundColor: "#1A6B4A22", borderWidth: 1, borderColor: "#1A6B4A66", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 }}>
+                <Text style={{ color: "#1A6B4A", fontSize: 11, fontWeight: "800", letterSpacing: 0.5 }}>🔑 FOR RENT</Text>
+              </View>
+            ) : null}
+          </View>
           <View style={{ flexDirection: "row", alignItems: "flex-end", marginBottom: 8 }}>
             <Text style={{ color: categoryColor, fontSize: 32, fontWeight: "900" }}>
               {formatPrice(listing.price, listing.currency)}
@@ -302,6 +311,35 @@ export default function ListingDetailScreen() {
           </View>
 
           <View style={{ height: 1, backgroundColor: "#1E1E2A", marginBottom: 24 }} />
+
+          {/* Owner boost CTA */}
+          {session?.user?.id === listing.user?.id ? (
+            <Pressable
+              testID="boost-listing-button"
+              onPress={() => router.push({ pathname: "/boost/[id]" as any, params: { id: listing.id } })}
+              style={{
+                flexDirection: "row", alignItems: "center",
+                backgroundColor: listing.boosted ? "#12121A" : "#1E1E0A",
+                borderRadius: 16, padding: 18, marginBottom: 24,
+                borderWidth: 1, borderColor: listing.boosted ? "#2A2A3A" : "#D4A84366",
+              }}
+            >
+              <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: "#D4A84322", alignItems: "center", justifyContent: "center", marginRight: 14 }}>
+                <Zap size={20} color="#D4A843" fill="#D4A843" strokeWidth={2} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "800" }}>
+                  {listing.boosted ? "Extend boost" : "Boost this listing"}
+                </Text>
+                <Text style={{ color: "#888", fontSize: 12, marginTop: 2 }}>
+                  {listing.boosted && listing.boostedUntil
+                    ? `Featured until ${new Date(listing.boostedUntil).toLocaleDateString()}`
+                    : "Get 10× more views from $5"}
+                </Text>
+              </View>
+              <Text style={{ color: "#D4A843", fontSize: 20 }}>→</Text>
+            </Pressable>
+          ) : null}
 
           {/* Seller info */}
           <View style={{ marginBottom: 100 }}>
