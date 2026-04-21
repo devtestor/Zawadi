@@ -114,6 +114,13 @@ router.post("/", async (c) => {
     miningArea?: number;
     miningLicense?: string;
     miningStatus?: string;
+    machineryKind?: string;
+    machineryType?: string;
+    machineryBrand?: string;
+    machineryModel?: string;
+    machineryYear?: number;
+    machineryHours?: number;
+    machineryCondition?: string;
     features?: unknown;
     images?: string[];
   };
@@ -123,6 +130,8 @@ router.post("/", async (c) => {
     latitude, longitude, area, bedrooms, bathrooms, propertyType,
     carMake, carModel, carYear, carMileage, carCondition, carColor, carFuel,
     mineralType, miningArea, miningLicense, miningStatus,
+    machineryKind, machineryType, machineryBrand, machineryModel,
+    machineryYear, machineryHours, machineryCondition,
     features, images,
   } = body;
 
@@ -133,6 +142,8 @@ router.post("/", async (c) => {
       area, bedrooms, bathrooms, propertyType,
       carMake, carModel, carYear, carMileage, carCondition, carColor, carFuel,
       mineralType, miningArea, miningLicense, miningStatus,
+      machineryKind, machineryType, machineryBrand, machineryModel,
+      machineryYear, machineryHours, machineryCondition,
       features: features ? JSON.stringify(features) : null,
       userId: user.id,
       images: {

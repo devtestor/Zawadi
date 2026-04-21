@@ -30,7 +30,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 const { width } = Dimensions.get("window");
 
 const CATEGORY_COLORS: Record<string, string> = {
-  property: "#D4A843", land: "#1A6B4A", car: "#E8890C", mining: "#C17B50",
+  property: "#D4A843", land: "#1A6B4A", car: "#E8890C", mining: "#C17B50", machinery: "#4A90A4",
 };
 
 export default function ListingDetailScreen() {
@@ -115,7 +115,7 @@ export default function ListingDetailScreen() {
           ) : (
             <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
               <Text style={{ fontSize: 80 }}>
-                {listing.category === "property" ? "🏠" : listing.category === "land" ? "🗺️" : listing.category === "car" ? "🚗" : "⛏️"}
+                {listing.category === "property" ? "🏠" : listing.category === "land" ? "🗺️" : listing.category === "car" ? "🚗" : listing.category === "machinery" ? "🚜" : "⛏️"}
               </Text>
             </View>
           )}
@@ -245,6 +245,36 @@ export default function ListingDetailScreen() {
               <View style={{ backgroundColor: "#16161E", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: "#2A2A3A" }}>
                 <Text style={{ color: "#888", fontSize: 11, marginBottom: 2 }}>Area</Text>
                 <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "800" }}>{listing.miningArea}ha</Text>
+              </View>
+            ) : null}
+            {listing.machineryType ? (
+              <View style={{ backgroundColor: "#16161E", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: "#2A2A3A" }}>
+                <Text style={{ color: "#888", fontSize: 11, marginBottom: 2 }}>Type</Text>
+                <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "800", textTransform: "capitalize" }}>{listing.machineryType.replace(/_/g, " ")}</Text>
+              </View>
+            ) : null}
+            {listing.machineryBrand ? (
+              <View style={{ backgroundColor: "#16161E", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: "#2A2A3A" }}>
+                <Text style={{ color: "#888", fontSize: 11, marginBottom: 2 }}>Brand</Text>
+                <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "800" }}>{listing.machineryBrand}</Text>
+              </View>
+            ) : null}
+            {listing.machineryModel ? (
+              <View style={{ backgroundColor: "#16161E", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: "#2A2A3A" }}>
+                <Text style={{ color: "#888", fontSize: 11, marginBottom: 2 }}>Model</Text>
+                <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "800" }}>{listing.machineryModel}</Text>
+              </View>
+            ) : null}
+            {listing.machineryYear ? (
+              <View style={{ backgroundColor: "#16161E", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: "#2A2A3A" }}>
+                <Text style={{ color: "#888", fontSize: 11, marginBottom: 2 }}>Year</Text>
+                <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "800" }}>{listing.machineryYear}</Text>
+              </View>
+            ) : null}
+            {listing.machineryHours ? (
+              <View style={{ backgroundColor: "#16161E", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: "#2A2A3A" }}>
+                <Text style={{ color: "#888", fontSize: 11, marginBottom: 2 }}>Hours</Text>
+                <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "800" }}>{listing.machineryHours.toLocaleString()}</Text>
               </View>
             ) : null}
             <View style={{ backgroundColor: "#16161E", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: "#2A2A3A" }}>

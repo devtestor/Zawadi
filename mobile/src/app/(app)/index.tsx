@@ -26,6 +26,7 @@ const CATEGORIES: { key: Category; icon: string; label: string }[] = [
   { key: "land", icon: "🗺️", label: "Land" },
   { key: "car", icon: "🚗", label: "Cars" },
   { key: "mining", icon: "⛏️", label: "Mining" },
+  { key: "machinery", icon: "🚜", label: "Machinery" },
 ];
 
 const STAT_CARDS = [

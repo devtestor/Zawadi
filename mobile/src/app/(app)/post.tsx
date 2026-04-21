@@ -11,18 +11,19 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { api } from "@/lib/api/api";
-import { AFRICAN_COUNTRIES } from "@/lib/types";
+import { AFRICAN_COUNTRIES, MACHINERY_TYPES } from "@/lib/types";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
 
-type PostCategory = "property" | "land" | "car" | "mining";
+type PostCategory = "property" | "land" | "car" | "mining" | "machinery";
 
 const CATEGORIES: { key: PostCategory; icon: string; label: string; desc: string }[] = [
   { key: "property", icon: "🏠", label: "Property", desc: "Houses, apartments, villas" },
   { key: "land", icon: "🗺️", label: "Land", desc: "Plots, farms, estates" },
   { key: "car", icon: "🚗", label: "Vehicle", desc: "Cars, trucks, motorcycles" },
   { key: "mining", icon: "⛏️", label: "Mining Site", desc: "Gold, diamonds, minerals" },
+  { key: "machinery", icon: "🚜", label: "Machinery", desc: "Agriculture & construction equipment" },
 ];
 
 function InputField({ label, value, onChange, placeholder, keyboardType = "default", multiline = false }: {
@@ -84,6 +85,13 @@ export default function PostScreen() {
   const [mineralType, setMineralType] = useState("");
   const [miningArea, setMiningArea] = useState("");
   const [miningLicense, setMiningLicense] = useState("");
+  const [machineryKind, setMachineryKind] = useState<"agriculture" | "construction" | "">("");
+  const [machineryType, setMachineryType] = useState("");
+  const [machineryBrand, setMachineryBrand] = useState("");
+  const [machineryModel, setMachineryModel] = useState("");
+  const [machineryYear, setMachineryYear] = useState("");
+  const [machineryHours, setMachineryHours] = useState("");
+  const [machineryCondition, setMachineryCondition] = useState<"new" | "used">("used");
   const [showCountryPicker, setShowCountryPicker] = useState(false);
 
   const handleSubmit = async () => {
@@ -113,6 +121,15 @@ export default function PostScreen() {
         body.mineralType = mineralType;
         if (miningArea) body.miningArea = parseFloat(miningArea);
         body.miningLicense = miningLicense;
+      }
+      if (category === "machinery") {
+        if (machineryKind) body.machineryKind = machineryKind;
+        if (machineryType) body.machineryType = machineryType;
+        if (machineryBrand) body.machineryBrand = machineryBrand;
+        if (machineryModel) body.machineryModel = machineryModel;
+        if (machineryYear) body.machineryYear = parseInt(machineryYear);
+        if (machineryHours) body.machineryHours = parseInt(machineryHours);
+        body.machineryCondition = machineryCondition;
       }
       await api.post("/api/listings", body);
       queryClient.invalidateQueries({ queryKey: ["listings"] });
@@ -339,6 +356,114 @@ export default function PostScreen() {
                   <InputField label="Mineral Type" value={mineralType} onChange={setMineralType} placeholder="e.g. Gold, Diamond, Copper" />
                   <InputField label="Area (hectares)" value={miningArea} onChange={setMiningArea} placeholder="e.g. 50" keyboardType="numeric" />
                   <InputField label="License Number" value={miningLicense} onChange={setMiningLicense} placeholder="License / permit number" />
+                </>
+              ) : null}
+
+              {category === "machinery" ? (
+                <>
+                  <View style={{ height: 1, backgroundColor: "#1E1E2A", marginVertical: 16 }} />
+                  <Text style={{ color: "#1A6B4A", fontSize: 14, fontWeight: "700", marginBottom: 16 }}>🚜 Machinery Details</Text>
+
+                  {/* Kind: agriculture / construction */}
+                  <View style={{ marginBottom: 16 }}>
+                    <Text style={{ color: "#888", fontSize: 12, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>
+                      Machinery Kind *
+                    </Text>
+                    <View style={{ flexDirection: "row", gap: 10 }}>
+                      {([
+                        { key: "agriculture", label: "🌾 Agriculture" },
+                        { key: "construction", label: "🏗️ Construction / Roads" },
+                      ] as const).map((k) => {
+                        const active = machineryKind === k.key;
+                        return (
+                          <Pressable
+                            key={k.key}
+                            testID={`machinery-kind-${k.key}`}
+                            onPress={() => { setMachineryKind(k.key); setMachineryType(""); }}
+                            style={{
+                              flex: 1, paddingVertical: 14, borderRadius: 12,
+                              backgroundColor: active ? "#0F2A1E" : "#16161E",
+                              borderWidth: 1, borderColor: active ? "#1A6B4A" : "#2A2A3A",
+                              alignItems: "center",
+                            }}
+                          >
+                            <Text style={{ color: active ? "#1A6B4A" : "#888", fontSize: 14, fontWeight: "700" }}>
+                              {k.label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+
+                  {/* Machine type picker — filtered by kind */}
+                  {machineryKind ? (
+                    <View style={{ marginBottom: 16 }}>
+                      <Text style={{ color: "#888", fontSize: 12, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>
+                        Machine Type *
+                      </Text>
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        style={{ flexGrow: 0 }}
+                        contentContainerStyle={{ gap: 8 }}
+                      >
+                        {MACHINERY_TYPES.filter((m) => m.kind === machineryKind).map((m) => {
+                          const active = machineryType === m.key;
+                          return (
+                            <Pressable
+                              key={m.key}
+                              testID={`machinery-type-${m.key}`}
+                              onPress={() => setMachineryType(m.key)}
+                              style={{
+                                paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20,
+                                backgroundColor: active ? "#1A6B4A" : "#16161E",
+                                borderWidth: 1, borderColor: active ? "#1A6B4A" : "#2A2A3A",
+                              }}
+                            >
+                              <Text style={{ color: active ? "#FFFFFF" : "#888", fontSize: 13, fontWeight: "700" }}>
+                                {m.label}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </ScrollView>
+                    </View>
+                  ) : null}
+
+                  <InputField label="Brand" value={machineryBrand} onChange={setMachineryBrand} placeholder="e.g. Caterpillar, John Deere, JCB" />
+                  <InputField label="Model" value={machineryModel} onChange={setMachineryModel} placeholder="e.g. 3CX, 5075E" />
+                  <InputField label="Year" value={machineryYear} onChange={setMachineryYear} placeholder="e.g. 2020" keyboardType="numeric" />
+                  <InputField label="Operating Hours" value={machineryHours} onChange={setMachineryHours} placeholder="e.g. 2400" keyboardType="numeric" />
+
+                  {/* Condition */}
+                  <View style={{ marginBottom: 16 }}>
+                    <Text style={{ color: "#888", fontSize: 12, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>
+                      Condition
+                    </Text>
+                    <View style={{ flexDirection: "row", gap: 10 }}>
+                      {(["new", "used"] as const).map((c) => {
+                        const active = machineryCondition === c;
+                        return (
+                          <Pressable
+                            key={c}
+                            testID={`machinery-condition-${c}`}
+                            onPress={() => setMachineryCondition(c)}
+                            style={{
+                              flex: 1, paddingVertical: 12, borderRadius: 12,
+                              backgroundColor: active ? "#D4A843" : "#16161E",
+                              borderWidth: 1, borderColor: active ? "#D4A843" : "#2A2A3A",
+                              alignItems: "center",
+                            }}
+                          >
+                            <Text style={{ color: active ? "#0A0A0F" : "#888", fontSize: 14, fontWeight: "700", textTransform: "capitalize" }}>
+                              {c}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
                 </>
               ) : null}
 

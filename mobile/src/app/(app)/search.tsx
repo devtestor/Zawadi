@@ -21,6 +21,7 @@ const CATEGORIES: { key: Category; icon: string }[] = [
   { key: "land", icon: "🗺️" },
   { key: "car", icon: "🚗" },
   { key: "mining", icon: "⛏️" },
+  { key: "machinery", icon: "🚜" },
 ];
 
 export default function SearchScreen() {

@@ -66,7 +66,7 @@ model Listing {
   description  String
   price        Float
   currency     String         @default("USD")
-  category     String         // "property" | "land" | "car" | "mining"
+  category     String         // "property" | "land" | "car" | "mining" | "machinery"
   status       String         @default("active") // "active" | "sold" | "pending"
   country      String
   city         String?
@@ -100,6 +100,15 @@ model Listing {
   miningArea   Float?
   miningLicense String?
   miningStatus  String?       // "active" | "dormant" | "prospect"
+
+  // Machinery fields
+  machineryKind  String?      // "agriculture" | "construction"
+  machineryType  String?      // e.g. "backhoe" | "wheel_loader" | "excavator" | "tractor" | "combine" | ...
+  machineryBrand String?      // e.g. "Caterpillar", "John Deere"
+  machineryModel String?
+  machineryYear  Int?
+  machineryHours Int?
+  machineryCondition String?  // "new" | "used" | "excellent" | "good" | "fair"
 
   // Features (stored as JSON string)
   features     String?
