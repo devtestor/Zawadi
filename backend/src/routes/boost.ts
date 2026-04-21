@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import crypto from "crypto";
 import { prisma } from "../prisma";
 import { auth } from "../auth";
 import { env } from "../env";
@@ -10,15 +11,32 @@ type Variables = {
 
 const router = new Hono<{ Variables: Variables }>();
 
-const FLW_BASE = "https://api.flutterwave.com/v3";
+const PAYSTACK_BASE = "https://api.paystack.co";
 
-const BOOST_TIERS: Record<string, { days: number; amount: number; currency: string; label: string }> = {
-  basic: { days: 3, amount: 5, currency: "USD", label: "3-day boost" },
-  standard: { days: 7, amount: 10, currency: "USD", label: "7-day boost" },
-  premium: { days: 30, amount: 30, currency: "USD", label: "30-day boost" },
+// Tiers are defined in USD for display. The actual charge is converted to the
+// provider currency (env.PAYSTACK_CURRENCY) at a fixed rate below.
+const BOOST_TIERS: Record<string, { days: number; amount: number; label: string }> = {
+  basic: { days: 3, amount: 5, label: "3-day boost" },
+  standard: { days: 7, amount: 10, label: "7-day boost" },
+  premium: { days: 30, amount: 30, label: "30-day boost" },
 };
 
-// POST /api/boost/:listingId - start a Flutterwave payment for a boost
+// Rough fixed rates so we can test without a live FX feed. Override per-deployment
+// by editing these numbers if needed.
+const USD_TO: Record<string, number> = {
+  USD: 1,
+  NGN: 1500,
+  GHS: 12,
+  KES: 130,
+  ZAR: 18,
+};
+
+function convertUSD(amountUsd: number, currency: string): number {
+  const rate = USD_TO[currency] ?? 1;
+  return Math.round(amountUsd * rate);
+}
+
+// POST /api/boost/:listingId - start a Paystack payment for a boost
 router.post("/:listingId", async (c) => {
   const user = c.get("user");
   if (!user) return c.json({ error: { message: "Unauthorized" } }, 401);
@@ -33,124 +51,149 @@ router.post("/:listingId", async (c) => {
   if (!listing) return c.json({ error: { message: "Listing not found" } }, 404);
   if (listing.userId !== user.id) return c.json({ error: { message: "Forbidden" } }, 403);
 
-  if (!env.FLUTTERWAVE_SECRET_KEY) {
-    return c.json({ error: { message: "Payments not configured. Add FLUTTERWAVE_SECRET_KEY." } }, 503);
+  if (!env.PAYSTACK_SECRET_KEY) {
+    return c.json({ error: { message: "Payments not configured. Add PAYSTACK_SECRET_KEY." } }, 503);
   }
 
+  const currency = env.PAYSTACK_CURRENCY.toUpperCase();
+  const amount = convertUSD(tier.amount, currency);
   const txRef = `boost_${listingId}_${Date.now()}`;
 
   await prisma.boostPayment.create({
     data: {
       listingId,
       userId: user.id,
+      provider: "paystack",
       txRef,
-      amount: tier.amount,
-      currency: tier.currency,
+      amount,
+      currency,
       days: tier.days,
       status: "pending",
     },
   });
 
-  const redirectUrl = `${env.BACKEND_URL}/api/boost/return`;
+  const callbackUrl = `${env.BACKEND_URL}/api/boost/return`;
 
   const payload = {
-    tx_ref: txRef,
-    amount: tier.amount,
-    currency: tier.currency,
-    redirect_url: redirectUrl,
-    payment_options: "card,mobilemoneyrwanda,mobilemoneyghana,mobilemoneyuganda,mobilemoneyzambia,mpesa,banktransfer,ussd",
-    customer: {
-      email: user.email,
-      name: user.name,
+    email: user.email,
+    amount: amount * 100, // Paystack expects subunits (kobo/pesewa/cents)
+    currency,
+    reference: txRef,
+    callback_url: callbackUrl,
+    metadata: {
+      listingId,
+      userId: user.id,
+      tier: tierKey,
+      custom_fields: [
+        { display_name: "Listing", variable_name: "listing", value: listing.title },
+        { display_name: "Plan", variable_name: "plan", value: tier.label },
+      ],
     },
-    customizations: {
-      title: "ZAWADI Boost Listing",
-      description: `${tier.label} — ${listing.title}`,
-    },
-    meta: { listingId, userId: user.id, tier: tierKey },
   };
 
-  const res = await fetch(`${FLW_BASE}/payments`, {
+  const res = await fetch(`${PAYSTACK_BASE}/transaction/initialize`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${env.FLUTTERWAVE_SECRET_KEY}`,
+      Authorization: `Bearer ${env.PAYSTACK_SECRET_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(payload),
   });
 
-  const data = (await res.json()) as { status?: string; message?: string; data?: { link?: string } };
-  if (!res.ok || data.status !== "success" || !data.data?.link) {
+  const data = (await res.json()) as {
+    status?: boolean;
+    message?: string;
+    data?: { authorization_url?: string; access_code?: string; reference?: string };
+  };
+
+  if (!res.ok || !data.status || !data.data?.authorization_url) {
     return c.json({ error: { message: data.message || "Failed to initiate payment" } }, 502);
   }
 
-  return c.json({ data: { checkoutUrl: data.data.link, txRef, tier } });
+  return c.json({
+    data: {
+      checkoutUrl: data.data.authorization_url,
+      txRef,
+      tier: { ...tier, chargedAmount: amount, chargedCurrency: currency },
+    },
+  });
 });
 
-// GET /api/boost/return - Flutterwave redirects here after checkout
+// GET /api/boost/return - Paystack redirects here after checkout
 router.get("/return", async (c) => {
-  const { tx_ref, transaction_id, status } = c.req.query();
-  if (!tx_ref) return c.text("Missing tx_ref", 400);
+  const { reference, trxref } = c.req.query();
+  const ref = reference || trxref;
+  if (!ref) return c.text("Missing reference", 400);
 
-  const payment = await prisma.boostPayment.findUnique({ where: { txRef: tx_ref } });
+  const payment = await prisma.boostPayment.findUnique({ where: { txRef: ref } });
   if (!payment) return c.text("Payment not found", 404);
 
-  if (status === "cancelled") {
-    await prisma.boostPayment.update({ where: { txRef: tx_ref }, data: { status: "failed" } });
-    return c.html(renderReturn("Payment cancelled", false));
-  }
-
-  if (!transaction_id) {
-    return c.html(renderReturn("No transaction id returned", false));
-  }
-
-  const verified = await verifyAndApply(payment.id, transaction_id);
+  const verified = await verifyAndApply(payment.id);
   return c.html(renderReturn(verified ? "Boost activated!" : "Payment could not be verified", verified));
 });
 
-// POST /api/boost/webhook - Flutterwave server-to-server notification
+// POST /api/boost/webhook - Paystack server-to-server notification
 router.post("/webhook", async (c) => {
-  const signature = c.req.header("verif-hash");
-  if (env.FLUTTERWAVE_WEBHOOK_SECRET && signature !== env.FLUTTERWAVE_WEBHOOK_SECRET) {
-    return c.json({ error: { message: "Invalid signature" } }, 401);
+  const raw = await c.req.text();
+  const signature = c.req.header("x-paystack-signature");
+
+  if (env.PAYSTACK_SECRET_KEY && signature) {
+    const expected = crypto
+      .createHmac("sha512", env.PAYSTACK_SECRET_KEY)
+      .update(raw)
+      .digest("hex");
+    if (expected !== signature) {
+      return c.json({ error: { message: "Invalid signature" } }, 401);
+    }
   }
 
-  const body = (await c.req.json()) as { data?: { tx_ref?: string; id?: number | string; status?: string } };
-  const txRef = body.data?.tx_ref;
-  const txId = body.data?.id;
-  if (!txRef || !txId) return c.json({ error: { message: "Missing tx_ref or id" } }, 400);
+  let event: { event?: string; data?: { reference?: string; status?: string } };
+  try {
+    event = JSON.parse(raw);
+  } catch {
+    return c.json({ error: { message: "Invalid JSON" } }, 400);
+  }
 
-  const payment = await prisma.boostPayment.findUnique({ where: { txRef } });
+  const ref = event.data?.reference;
+  if (!ref) return c.json({ error: { message: "Missing reference" } }, 400);
+
+  const payment = await prisma.boostPayment.findUnique({ where: { txRef: ref } });
   if (!payment) return c.json({ error: { message: "Payment not found" } }, 404);
 
-  await verifyAndApply(payment.id, String(txId));
+  if (event.event === "charge.success") {
+    await verifyAndApply(payment.id);
+  }
   return c.json({ data: { ok: true } });
 });
 
-async function verifyAndApply(paymentId: string, transactionId: string): Promise<boolean> {
+async function verifyAndApply(paymentId: string): Promise<boolean> {
   const payment = await prisma.boostPayment.findUnique({ where: { id: paymentId } });
   if (!payment) return false;
   if (payment.status === "successful") return true;
 
-  const res = await fetch(`${FLW_BASE}/transactions/${transactionId}/verify`, {
-    headers: { Authorization: `Bearer ${env.FLUTTERWAVE_SECRET_KEY}` },
+  const res = await fetch(`${PAYSTACK_BASE}/transaction/verify/${encodeURIComponent(payment.txRef)}`, {
+    headers: { Authorization: `Bearer ${env.PAYSTACK_SECRET_KEY}` },
   });
   const data = (await res.json()) as {
-    status?: string;
-    data?: { status?: string; tx_ref?: string; amount?: number; currency?: string };
+    status?: boolean;
+    data?: { status?: string; reference?: string; amount?: number; currency?: string; id?: number };
   };
 
   const ok =
-    data.status === "success" &&
-    data.data?.status === "successful" &&
-    data.data?.tx_ref === payment.txRef &&
-    data.data?.amount === payment.amount &&
+    data.status === true &&
+    data.data?.status === "success" &&
+    data.data?.reference === payment.txRef &&
+    data.data?.amount === payment.amount * 100 &&
     data.data?.currency === payment.currency;
 
   if (!ok) {
     await prisma.boostPayment.update({
       where: { id: paymentId },
-      data: { status: "failed", flutterwaveId: transactionId, verifiedAt: new Date() },
+      data: {
+        status: "failed",
+        providerTxId: data.data?.id ? String(data.data.id) : null,
+        verifiedAt: new Date(),
+      },
     });
     return false;
   }
@@ -163,7 +206,11 @@ async function verifyAndApply(paymentId: string, transactionId: string): Promise
   await prisma.$transaction([
     prisma.boostPayment.update({
       where: { id: paymentId },
-      data: { status: "successful", flutterwaveId: transactionId, verifiedAt: now },
+      data: {
+        status: "successful",
+        providerTxId: data.data?.id ? String(data.data.id) : null,
+        verifiedAt: now,
+      },
     }),
     prisma.listing.update({
       where: { id: payment.listingId },

@@ -11,6 +11,8 @@ const envSchema = z.object({
   BACKEND_URL: z.string().optional().default("http://localhost:3000"),
   FLUTTERWAVE_SECRET_KEY: z.string().optional().default(""),
   FLUTTERWAVE_WEBHOOK_SECRET: z.string().optional().default(""),
+  PAYSTACK_SECRET_KEY: z.string().optional().default(""),
+  PAYSTACK_CURRENCY: z.string().optional().default("NGN"),
 });
 
 export const env = envSchema.parse(process.env);
