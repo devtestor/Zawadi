@@ -183,9 +183,21 @@ export default function ListingDetailScreen() {
 
         {/* Content */}
         <View style={{ paddingHorizontal: 20, paddingTop: 24 }}>
-          <Text style={{ color: categoryColor, fontSize: 32, fontWeight: "900", marginBottom: 8 }}>
-            {formatPrice(listing.price, listing.currency)}
-          </Text>
+          {listing.listingType === "rent" ? (
+            <View style={{ alignSelf: "flex-start", backgroundColor: "#1A6B4A22", borderWidth: 1, borderColor: "#1A6B4A66", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, marginBottom: 8 }}>
+              <Text style={{ color: "#1A6B4A", fontSize: 11, fontWeight: "800", letterSpacing: 0.5 }}>🔑 FOR RENT</Text>
+            </View>
+          ) : null}
+          <View style={{ flexDirection: "row", alignItems: "flex-end", marginBottom: 8 }}>
+            <Text style={{ color: categoryColor, fontSize: 32, fontWeight: "900" }}>
+              {formatPrice(listing.price, listing.currency)}
+            </Text>
+            {listing.listingType === "rent" && listing.rentalPeriod ? (
+              <Text style={{ color: "#666680", fontSize: 16, fontWeight: "700", marginLeft: 4, marginBottom: 4 }}>
+                /{listing.rentalPeriod}
+              </Text>
+            ) : null}
+          </View>
           <Text style={{ color: "#FFFFFF", fontSize: 22, fontWeight: "800", marginBottom: 12, lineHeight: 30 }}>
             {listing.title}
           </Text>

@@ -11,12 +11,13 @@ const router = new Hono<{ Variables: Variables }>();
 
 // GET /api/listings - browse all listings with filters
 router.get("/", async (c) => {
-  const { category, country, minPrice, maxPrice, search, status } = c.req.query();
+  const { category, country, minPrice, maxPrice, search, status, listingType } = c.req.query();
 
   const where: {
     status?: string;
     category?: string;
     country?: string;
+    listingType?: string;
     OR?: Array<{ title?: { contains: string }; description?: { contains: string }; city?: { contains: string }; country?: { contains: string } }>;
     price?: { gte?: number; lte?: number };
   } = {
@@ -25,6 +26,7 @@ router.get("/", async (c) => {
 
   if (category) where.category = category;
   if (country) where.country = country;
+  if (listingType) where.listingType = listingType;
   if (search) {
     where.OR = [
       { title: { contains: search } },
@@ -94,6 +96,8 @@ router.post("/", async (c) => {
     price: string | number;
     currency?: string;
     category: string;
+    listingType?: string;
+    rentalPeriod?: string;
     country: string;
     city?: string;
     address?: string;
@@ -126,7 +130,8 @@ router.post("/", async (c) => {
   };
 
   const {
-    title, description, price, currency, category, country, city, address,
+    title, description, price, currency, category, listingType, rentalPeriod,
+    country, city, address,
     latitude, longitude, area, bedrooms, bathrooms, propertyType,
     carMake, carModel, carYear, carMileage, carCondition, carColor, carFuel,
     mineralType, miningArea, miningLicense, miningStatus,
@@ -138,7 +143,10 @@ router.post("/", async (c) => {
   const listing = await prisma.listing.create({
     data: {
       title, description, price: parseFloat(String(price)), currency: currency || "USD",
-      category, country, city, address, latitude, longitude,
+      category,
+      listingType: listingType || "sale",
+      rentalPeriod: listingType === "rent" ? (rentalPeriod || "month") : null,
+      country, city, address, latitude, longitude,
       area, bedrooms, bathrooms, propertyType,
       carMake, carModel, carYear, carMileage, carCondition, carColor, carFuel,
       mineralType, miningArea, miningLicense, miningStatus,

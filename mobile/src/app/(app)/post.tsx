@@ -8,6 +8,7 @@ import {
   StatusBar,
   ActivityIndicator,
   Alert,
+  Image,
 } from "react-native";
 import { router } from "expo-router";
 import { api } from "@/lib/api/api";
@@ -15,6 +16,12 @@ import { AFRICAN_COUNTRIES, MACHINERY_TYPES } from "@/lib/types";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
+import { pickImage, uploadFile } from "@/lib/upload";
+import { Plus, X } from "lucide-react-native";
+
+const MIN_IMAGES = 3;
+const MAX_IMAGES = 5;
+type RentalPeriod = "day" | "week" | "month" | "year";
 
 type PostCategory = "property" | "land" | "car" | "mining" | "machinery";
 
@@ -93,18 +100,54 @@ export default function PostScreen() {
   const [machineryHours, setMachineryHours] = useState("");
   const [machineryCondition, setMachineryCondition] = useState<"new" | "used">("used");
   const [showCountryPicker, setShowCountryPicker] = useState(false);
+  const [listingType, setListingType] = useState<"sale" | "rent">("sale");
+  const [rentalPeriod, setRentalPeriod] = useState<RentalPeriod>("month");
+  const [images, setImages] = useState<string[]>([]);
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  const canHaveRental = category === "property" || category === "land" || category === "car" || category === "machinery";
+
+  const handleAddImage = async () => {
+    if (images.length >= MAX_IMAGES) {
+      Alert.alert("Maximum reached", `You can upload up to ${MAX_IMAGES} images`);
+      return;
+    }
+    try {
+      const picked = await pickImage();
+      if (!picked) return;
+      setUploadingImage(true);
+      const result = await uploadFile(picked);
+      setImages((prev) => [...prev, result.url]);
+    } catch (e: any) {
+      Alert.alert("Upload failed", e.message || "Could not upload image");
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const handleRemoveImage = (idx: number) => {
+    setImages((prev) => prev.filter((_, i) => i !== idx));
+  };
 
   const handleSubmit = async () => {
     if (!title || !price || !country || !category) {
       Alert.alert("Missing fields", "Please fill in all required fields");
       return;
     }
+    if (images.length < MIN_IMAGES) {
+      Alert.alert("Images required", `Please upload at least ${MIN_IMAGES} images (max ${MAX_IMAGES})`);
+      return;
+    }
     setLoading(true);
     try {
       const body: Record<string, unknown> = {
         title, description, price: parseFloat(price), currency, category,
-        country, city, address,
+        country, city, address, images,
+        listingType: canHaveRental ? listingType : "sale",
       };
+      if (canHaveRental && listingType === "rent") {
+        body.rentalPeriod = rentalPeriod;
+      }
       if (category === "property" || category === "land") {
         if (area) body.area = parseFloat(area);
         if (bedrooms) body.bedrooms = parseInt(bedrooms);
@@ -137,6 +180,7 @@ export default function PostScreen() {
         { text: "View Home", onPress: () => router.push("/(app)") },
       ]);
       setStep(1); setCategory(null); setTitle(""); setDescription(""); setPrice(""); setCountry(""); setCity("");
+      setImages([]); setListingType("sale"); setRentalPeriod("month");
     } catch (e: any) {
       Alert.alert("Error", e.message || "Failed to post listing");
     } finally {
@@ -228,6 +272,65 @@ export default function PostScreen() {
               <Text style={{ color: "#666680", fontSize: 14, marginBottom: 24 }}>
                 Fill in the details to attract buyers
               </Text>
+
+              {canHaveRental ? (
+                <View style={{ marginBottom: 20 }}>
+                  <Text style={{ color: "#888", fontSize: 12, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>
+                    Listing Type *
+                  </Text>
+                  <View style={{ flexDirection: "row", gap: 10 }}>
+                    {(["sale", "rent"] as const).map((t) => {
+                      const active = listingType === t;
+                      return (
+                        <Pressable
+                          key={t}
+                          testID={`listing-type-${t}`}
+                          onPress={() => setListingType(t)}
+                          style={{
+                            flex: 1, paddingVertical: 14, borderRadius: 12,
+                            backgroundColor: active ? "#D4A843" : "#16161E",
+                            borderWidth: 1, borderColor: active ? "#D4A843" : "#2A2A3A",
+                            alignItems: "center",
+                          }}
+                        >
+                          <Text style={{ color: active ? "#0A0A0F" : "#888", fontSize: 14, fontWeight: "800" }}>
+                            {t === "sale" ? "💰 For Sale" : "🔑 For Rent"}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  {listingType === "rent" ? (
+                    <View style={{ marginTop: 12 }}>
+                      <Text style={{ color: "#888", fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>
+                        Rental Period
+                      </Text>
+                      <View style={{ flexDirection: "row", gap: 8 }}>
+                        {(["day", "week", "month", "year"] as const).map((p) => {
+                          const active = rentalPeriod === p;
+                          return (
+                            <Pressable
+                              key={p}
+                              testID={`rental-period-${p}`}
+                              onPress={() => setRentalPeriod(p)}
+                              style={{
+                                flex: 1, paddingVertical: 10, borderRadius: 10,
+                                backgroundColor: active ? "#1E1E0A" : "#16161E",
+                                borderWidth: 1, borderColor: active ? "#D4A843" : "#2A2A3A",
+                                alignItems: "center",
+                              }}
+                            >
+                              <Text style={{ color: active ? "#D4A843" : "#888", fontSize: 13, fontWeight: "700", textTransform: "capitalize" }}>
+                                {p}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
 
               <InputField label="Title *" value={title} onChange={setTitle} placeholder="e.g. 3 Bedroom House in Nairobi" />
               <InputField label="Description *" value={description} onChange={setDescription} placeholder="Describe your listing in detail..." multiline />
@@ -466,6 +569,65 @@ export default function PostScreen() {
                   </View>
                 </>
               ) : null}
+
+              {/* Image uploader */}
+              <View style={{ height: 1, backgroundColor: "#1E1E2A", marginVertical: 16 }} />
+              <Text style={{ color: "#D4A843", fontSize: 14, fontWeight: "700", marginBottom: 4 }}>
+                📸 Photos * ({images.length}/{MAX_IMAGES})
+              </Text>
+              <Text style={{ color: "#666680", fontSize: 12, marginBottom: 12 }}>
+                Upload {MIN_IMAGES}-{MAX_IMAGES} images to attract buyers
+              </Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                {images.map((url, idx) => (
+                  <View key={url} style={{ width: 96, height: 96, borderRadius: 12, overflow: "hidden", position: "relative" }}>
+                    <Image source={{ uri: url }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+                    <Pressable
+                      testID={`remove-image-${idx}`}
+                      onPress={() => handleRemoveImage(idx)}
+                      style={{
+                        position: "absolute", top: 4, right: 4,
+                        width: 22, height: 22, borderRadius: 11,
+                        backgroundColor: "rgba(0,0,0,0.7)",
+                        alignItems: "center", justifyContent: "center",
+                      }}
+                    >
+                      <X size={12} color="#FFFFFF" strokeWidth={3} />
+                    </Pressable>
+                    {idx === 0 ? (
+                      <View style={{
+                        position: "absolute", bottom: 4, left: 4,
+                        backgroundColor: "#D4A843", borderRadius: 6,
+                        paddingHorizontal: 6, paddingVertical: 2,
+                      }}>
+                        <Text style={{ color: "#0A0A0F", fontSize: 9, fontWeight: "900" }}>COVER</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                ))}
+                {images.length < MAX_IMAGES ? (
+                  <Pressable
+                    testID="add-image-button"
+                    onPress={handleAddImage}
+                    disabled={uploadingImage}
+                    style={{
+                      width: 96, height: 96, borderRadius: 12,
+                      backgroundColor: "#16161E",
+                      borderWidth: 2, borderColor: "#2A2A3A", borderStyle: "dashed",
+                      alignItems: "center", justifyContent: "center",
+                    }}
+                  >
+                    {uploadingImage ? (
+                      <ActivityIndicator color="#D4A843" />
+                    ) : (
+                      <>
+                        <Plus size={24} color="#666680" strokeWidth={2} />
+                        <Text style={{ color: "#666680", fontSize: 11, fontWeight: "700", marginTop: 4 }}>Add Photo</Text>
+                      </>
+                    )}
+                  </Pressable>
+                ) : null}
+              </View>
 
               <Pressable
                 testID="publish-button"

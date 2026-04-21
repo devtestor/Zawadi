@@ -22,6 +22,8 @@ export interface Listing {
   price: number;
   currency: string;
   category: "property" | "land" | "car" | "mining" | "machinery";
+  listingType?: "sale" | "rent";
+  rentalPeriod?: "day" | "week" | "month" | "year";
   status: "active" | "sold" | "pending";
   country: string;
   city?: string;
