@@ -21,7 +21,7 @@ export interface Listing {
   description: string;
   price: number;
   currency: string;
-  category: "property" | "land" | "car" | "mining";
+  category: "property" | "land" | "car" | "mining" | "machinery";
   status: "active" | "sold" | "pending";
   country: string;
   city?: string;
@@ -51,11 +51,19 @@ export interface Listing {
   miningArea?: number;
   miningLicense?: string;
   miningStatus?: string;
+  // Machinery
+  machineryKind?: string;
+  machineryType?: string;
+  machineryBrand?: string;
+  machineryModel?: string;
+  machineryYear?: number;
+  machineryHours?: number;
+  machineryCondition?: string;
   // Features
   features?: string;
 }
 
-export type Category = "all" | "property" | "land" | "car" | "mining";
+export type Category = "all" | "property" | "land" | "car" | "mining" | "machinery";
 
 export const AFRICAN_COUNTRIES = [
   "Algeria", "Angola", "Benin", "Botswana", "Burkina Faso", "Burundi",
@@ -83,9 +91,29 @@ export function formatPrice(price: number, currency: string = "USD"): string {
 }
 
 export const CATEGORY_ICONS: Record<string, string> = {
-  property: "🏠", land: "🌍", car: "🚗", mining: "⛏️",
+  property: "🏠", land: "🌍", car: "🚗", mining: "⛏️", machinery: "🚜",
 };
 
 export const CATEGORY_LABELS: Record<string, string> = {
-  all: "All", property: "Property", land: "Land", car: "Cars", mining: "Mining",
+  all: "All", property: "Property", land: "Land", car: "Cars", mining: "Mining", machinery: "Machinery",
 };
+
+export const MACHINERY_TYPES: { kind: "agriculture" | "construction"; key: string; label: string }[] = [
+  { kind: "agriculture", key: "tractor", label: "Tractor" },
+  { kind: "agriculture", key: "combine_harvester", label: "Combine Harvester" },
+  { kind: "agriculture", key: "plough", label: "Plough" },
+  { kind: "agriculture", key: "seeder", label: "Seeder / Planter" },
+  { kind: "agriculture", key: "sprayer", label: "Sprayer" },
+  { kind: "agriculture", key: "baler", label: "Baler" },
+  { kind: "agriculture", key: "irrigation", label: "Irrigation System" },
+  { kind: "construction", key: "backhoe", label: "Backhoe Loader" },
+  { kind: "construction", key: "wheel_loader", label: "Wheel Loader" },
+  { kind: "construction", key: "excavator", label: "Excavator" },
+  { kind: "construction", key: "bulldozer", label: "Bulldozer" },
+  { kind: "construction", key: "grader", label: "Motor Grader" },
+  { kind: "construction", key: "roller", label: "Road Roller" },
+  { kind: "construction", key: "dump_truck", label: "Dump Truck" },
+  { kind: "construction", key: "crane", label: "Crane" },
+  { kind: "construction", key: "skid_steer", label: "Skid Steer" },
+  { kind: "construction", key: "paver", label: "Asphalt Paver" },
+];
