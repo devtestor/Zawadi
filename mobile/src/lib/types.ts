@@ -63,6 +63,9 @@ export interface Listing {
   machineryCondition?: string;
   // Features
   features?: string;
+  // Boost
+  boosted?: boolean;
+  boostedUntil?: string;
 }
 
 export type Category = "all" | "property" | "land" | "car" | "mining" | "machinery";

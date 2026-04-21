@@ -95,6 +95,17 @@ export default function ListingCard({ listing, favorited, onToggleFavorite, comp
             </View>
           ) : null}
 
+          {/* Boosted badge */}
+          {listing.boosted ? (
+            <View style={{
+              position: "absolute", bottom: 12, left: 12,
+              backgroundColor: "#D4A843", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12,
+              flexDirection: "row", alignItems: "center", gap: 4,
+            }}>
+              <Text style={{ color: "#0A0A0F", fontSize: 11, fontWeight: "900", letterSpacing: 0.5 }}>⚡ FEATURED</Text>
+            </View>
+          ) : null}
+
           {/* Status badge */}
           {listing.status !== "active" ? (
             <View style={{
