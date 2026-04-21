@@ -57,6 +57,32 @@ app.use("*", async (c, next) => {
 // Health
 app.get("/health", (c) => c.json({ status: "ok" }));
 
+// File upload (images for listings)
+app.post("/api/upload", async (c) => {
+  const formData = await c.req.formData();
+  const file = formData.get("file");
+
+  if (!file || !(file instanceof File)) {
+    return c.json({ error: { message: "No file provided" } }, 400);
+  }
+
+  const storageForm = new FormData();
+  storageForm.append("file", file);
+
+  const response = await fetch("https://storage.vibecodeapp.com/v1/files/upload", {
+    method: "POST",
+    body: storageForm,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: "Upload failed" }));
+    return c.json({ error: { message: (error as { error?: string }).error || "Upload failed" } }, 500);
+  }
+
+  const result = (await response.json()) as { file: { id: string; url: string; originalFilename: string; contentType: string; sizeBytes: number } };
+  return c.json({ data: result.file });
+});
+
 // Auth routes
 app.on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw));
 

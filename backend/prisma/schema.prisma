@@ -67,6 +67,8 @@ model Listing {
   price        Float
   currency     String         @default("USD")
   category     String         // "property" | "land" | "car" | "mining" | "machinery"
+  listingType  String         @default("sale") // "sale" | "rent"
+  rentalPeriod String?        // "day" | "week" | "month" | "year"
   status       String         @default("active") // "active" | "sold" | "pending"
   country      String
   city         String?

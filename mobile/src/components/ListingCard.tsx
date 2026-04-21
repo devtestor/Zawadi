@@ -19,6 +19,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   land: "#1A6B4A",
   car: "#E8890C",
   mining: "#C17B50",
+  machinery: "#4A90A4",
 };
 
 const CATEGORY_BG: Record<string, string> = {
@@ -26,6 +27,7 @@ const CATEGORY_BG: Record<string, string> = {
   land: "#0A1F14",
   car: "#2A1A0A",
   mining: "#1F140A",
+  machinery: "#0A1A22",
 };
 
 export default function ListingCard({ listing, favorited, onToggleFavorite, compact }: Props) {
@@ -67,7 +69,7 @@ export default function ListingCard({ listing, favorited, onToggleFavorite, comp
           ) : (
             <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
               <Text style={{ fontSize: 48 }}>
-                {listing.category === "property" ? "🏠" : listing.category === "land" ? "🌍" : listing.category === "car" ? "🚗" : "⛏️"}
+                {listing.category === "property" ? "🏠" : listing.category === "land" ? "🌍" : listing.category === "car" ? "🚗" : listing.category === "machinery" ? "🚜" : "⛏️"}
               </Text>
             </View>
           )}
@@ -82,6 +84,16 @@ export default function ListingCard({ listing, favorited, onToggleFavorite, comp
               {listing.category}
             </Text>
           </View>
+
+          {/* Rent badge */}
+          {listing.listingType === "rent" ? (
+            <View style={{
+              position: "absolute", top: 12, left: listing.category.length * 7 + 44,
+              backgroundColor: "#1A6B4A", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12,
+            }}>
+              <Text style={{ color: "#FFFFFF", fontSize: 10, fontWeight: "800", letterSpacing: 0.5 }}>🔑 RENT</Text>
+            </View>
+          ) : null}
 
           {/* Status badge */}
           {listing.status !== "active" ? (
@@ -121,12 +133,19 @@ export default function ListingCard({ listing, favorited, onToggleFavorite, comp
 
         {/* Info */}
         <View style={{ padding: compact ? 12 : 16 }}>
-          <Text style={{
-            color: categoryColor, fontSize: compact ? 20 : 24,
-            fontWeight: "800", marginBottom: 4,
-          }}>
-            {formatPrice(listing.price, listing.currency)}
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "baseline", marginBottom: 4 }}>
+            <Text style={{
+              color: categoryColor, fontSize: compact ? 20 : 24,
+              fontWeight: "800",
+            }}>
+              {formatPrice(listing.price, listing.currency)}
+            </Text>
+            {listing.listingType === "rent" && listing.rentalPeriod ? (
+              <Text style={{ color: "#666680", fontSize: compact ? 12 : 14, fontWeight: "700", marginLeft: 3 }}>
+                /{listing.rentalPeriod}
+              </Text>
+            ) : null}
+          </View>
           <Text
             style={{ color: "#FFFFFF", fontSize: compact ? 13 : 15, fontWeight: "600", marginBottom: 6 }}
             numberOfLines={1}
