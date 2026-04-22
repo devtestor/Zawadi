@@ -13,6 +13,11 @@ const envSchema = z.object({
   FLUTTERWAVE_WEBHOOK_SECRET: z.string().optional().default(""),
   PAYSTACK_SECRET_KEY: z.string().optional().default(""),
   PAYSTACK_CURRENCY: z.string().optional().default("NGN"),
+  PESAPAL_CONSUMER_KEY: z.string().optional().default(""),
+  PESAPAL_CONSUMER_SECRET: z.string().optional().default(""),
+  PESAPAL_BASE_URL: z.string().optional().default("https://cybqa.pesapal.com/pesapalv3"),
+  PESAPAL_IPN_ID: z.string().optional().default(""),
+  PESAPAL_CURRENCY: z.string().optional().default("RWF"),
 });
 
 export const env = envSchema.parse(process.env);
