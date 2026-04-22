@@ -9,6 +9,7 @@ A full-stack mobile app for buying and selling properties, land, cars, and minin
 - 🗺️ **Land** - Plots, farms, agricultural land, estates
 - 🚗 **Cars** - Vehicles of all types and conditions
 - ⛏️ **Mining Sites** - Gold, diamond, copper, and mineral extraction sites
+- 
 
 ## Tech Stack
 
@@ -30,7 +31,7 @@ A full-stack mobile app for buying and selling properties, land, cars, and minin
 
 ### Authentication Flow
 1. User enters email on sign-in screen
-2. OTP sent via Vibecode SMTP service
+2. OTP sent via zawadi SMTP service
 3. User verifies 6-digit code
 4. Session stored securely via cookie management
 5. Stack.Protected guards route access
