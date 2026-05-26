@@ -4,51 +4,46 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { emailOTP } from "better-auth/plugins";
 import { prisma } from "./prisma";
 import { env } from "./env";
+import { sendOtpEmail } from "./lib/email";
 
 export const auth = betterAuth({
-  database: prismaAdapter(prisma, { provider: "sqlite" }),
+  database: prismaAdapter(prisma, { provider: env.DATABASE_PROVIDER }),
   secret: env.BETTER_AUTH_SECRET,
   baseURL: env.BACKEND_URL,
   trustedOrigins: [
-    "vibecode://*/*",
+    ...env.APP_SCHEMES.split(",").map((s) => s.trim()).filter(Boolean).map((scheme) => `${scheme.replace(/\/+$/, "")}/*/*`),
     "exp://*/*",
     "http://localhost:*",
     "http://127.0.0.1:*",
-    "https://*.dev.vibecode.run",
-    "https://*.vibecode.run",
-    "https://*.vibecodeapp.com",
-    "https://*.vibecode.dev",
-    "https://vibecode.dev",
+    ...env.ALLOWED_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean),
   ],
   plugins: [
     expo(),
     emailOTP({
       async sendVerificationOTP({ email, otp, type }) {
         if (type !== "sign-in") return;
-        const response = await fetch("https://smtp.vibecodeapp.com/v1/send/otp", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            to: email,
-            code: String(otp),
-            fromName: "ZAWADI Marketplace",
-            lang: "en",
-          }),
-        });
-        if (!response.ok) {
-          const data = await response.json().catch(() => null) as { error?: string } | null;
-          throw new Error(data?.error || `Failed to send OTP (HTTP ${response.status})`);
-        }
+        await sendOtpEmail({ to: email, code: String(otp) });
       },
     }),
   ],
   advanced: {
     trustedProxyHeaders: true,
-    disableCSRFCheck: true,
+    // CSRF stays enabled. Expo/native + browser callers from trusted
+    // origins are accepted by virtue of the trustedOrigins list above.
     defaultCookieAttributes: {
       sameSite: "none",
       secure: true,
       partitioned: true,
+    },
+  },
+  rateLimit: {
+    enabled: true,
+    window: 60,
+    max: 60,
+    customRules: {
+      // OTP send is the spam vector — keep it tight.
+      "/email-otp/send-verification-otp": { window: 60, max: 3 },
+      "/sign-in/email-otp": { window: 60, max: 10 },
     },
   },
 });
