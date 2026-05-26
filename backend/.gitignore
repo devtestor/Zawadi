@@ -17,11 +17,10 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 server.log
 studio.log
 
-# dotenv environment variable files
-.env.development.local
-.env.test.local
-.env.production.local
-.env.local
+# dotenv environment variable files — never commit any of these
+.env
+.env.*
+!.env.example
 
 # caches
 .eslintcache
@@ -36,3 +35,8 @@ studio.log
 
 # Prisma generated files (bunx prisma generate)
 /generated/prisma
+
+# Local SQLite database (do not commit)
+prisma/prisma/*.db
+prisma/prisma/*.db-wal
+prisma/prisma/*.db-shm
