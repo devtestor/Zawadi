@@ -6,8 +6,9 @@
   "scripts": {
     "dev": "bun run --hot src/index.ts",
     "start": "bun run src/index.ts",
-    "studio": "cloud-studio --port 3001 --hostname 0.0.0.0",
-    "typecheck": "tsc --noEmit"
+    "studio": "bunx prisma studio",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
   },
   "devDependencies": {
     "@types/bun": "latest",
@@ -19,9 +20,6 @@
     "@hono/node-server": "1.12.0",
     "@hono/zod-validator": "^0.7.6",
     "@prisma/client": "6",
-    "@vibecodeapp/backend-sdk": "^1.0.1",
-    "@vibecodeapp/cloud-studio": "^0.2.4",
-    "@vibecodeapp/proxy": "^2.0.3",
     "better-auth": "^1.5.6",
     "dotenv": "^17.3.1",
     "hono": "4.6.0",

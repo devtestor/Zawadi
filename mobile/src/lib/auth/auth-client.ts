@@ -2,7 +2,7 @@
 import * as SecureStore from "expo-secure-store";
 import { fetch, type FetchRequestInit } from "expo/fetch";
 
-const COOKIE_KEY = "vibecode_auth_cookie";
+const COOKIE_KEY = "zawadi_auth_cookie";
 const baseUrl = process.env.EXPO_PUBLIC_BACKEND_URL!;
 
 // Store cookies from response headers
