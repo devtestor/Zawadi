@@ -6,7 +6,7 @@ generator client {
 // DATABASE_URL (Postgres connection string) and DATABASE_PROVIDER=postgresql
 // in your environment. Then run: bunx prisma migrate deploy
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
