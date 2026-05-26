@@ -36,6 +36,8 @@ import {
   Flag,
   MessageSquare,
   BarChart3,
+  Gavel,
+  ShoppingBag,
 } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -663,7 +665,44 @@ export default function ListingDetailScreen() {
           position: "absolute", bottom: 0, left: 0, right: 0,
           backgroundColor: "#0A0A0F", borderTopWidth: 1, borderTopColor: "#1E1E2A",
           paddingHorizontal: 20, paddingTop: 16, paddingBottom: 40,
+          flexDirection: "row", gap: 10,
         }}>
+          {listing.auctionEndsAt && !listing.auctionClosed ? (
+            <Pressable
+              testID="place-bid-cta"
+              onPress={() => router.push({ pathname: "/listing/bids/[id]" as any, params: { id: listing.id } })}
+              style={{ flex: 1, borderRadius: 16, overflow: "hidden" }}
+            >
+              <LinearGradient colors={["#D4A843", "#E8890C"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                style={{ paddingVertical: 16, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                <Gavel size={16} color="#0A0A0F" strokeWidth={2.5} />
+                <Text style={{ color: "#0A0A0F", fontSize: 15, fontWeight: "900" }}>Place bid</Text>
+              </LinearGradient>
+            </Pressable>
+          ) : (
+            <Pressable
+              testID="buy-now-cta"
+              onPress={async () => {
+                if (!session?.user) {
+                  Alert.alert("Sign in required", "Please sign in to buy");
+                  return;
+                }
+                try {
+                  const result = await api.post<{ id: string }>("/api/trades", { listingId: listing.id });
+                  router.push({ pathname: "/trade/[id]" as any, params: { id: result.id } });
+                } catch (e: unknown) {
+                  Alert.alert("Couldn't start trade", e instanceof Error ? e.message : "Try again");
+                }
+              }}
+              style={{ flex: 1, borderRadius: 16, overflow: "hidden" }}
+            >
+              <LinearGradient colors={["#D4A843", "#E8890C"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                style={{ paddingVertical: 16, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                <ShoppingBag size={16} color="#0A0A0F" strokeWidth={2.5} />
+                <Text style={{ color: "#0A0A0F", fontSize: 15, fontWeight: "900" }}>Buy via escrow</Text>
+              </LinearGradient>
+            </Pressable>
+          )}
           <Pressable
             testID="message-seller-button"
             onPress={async () => {
@@ -678,18 +717,12 @@ export default function ListingDetailScreen() {
                 });
                 router.push({ pathname: "/chat/[id]" as any, params: { id: result.id } });
               } catch (e: unknown) {
-                const msg = e instanceof Error ? e.message : "Could not start conversation";
-                Alert.alert("Error", msg);
+                Alert.alert("Error", e instanceof Error ? e.message : "Could not start conversation");
               }
             }}
-            style={{ borderRadius: 16, overflow: "hidden" }}
+            style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: "#16161E", borderWidth: 1, borderColor: "#2A2A3A", alignItems: "center", justifyContent: "center" }}
           >
-            <LinearGradient colors={["#D4A843", "#E8890C"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-              style={{ paddingVertical: 18, alignItems: "center" }}>
-              <Text style={{ color: "#0A0A0F", fontSize: 17, fontWeight: "800" }}>
-                Message Seller
-              </Text>
-            </LinearGradient>
+            <MessageSquare size={20} color="#D4A843" strokeWidth={2.5} />
           </Pressable>
         </View>
       ) : null}

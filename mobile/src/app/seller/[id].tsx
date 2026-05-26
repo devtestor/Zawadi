@@ -25,7 +25,18 @@ interface Review {
 }
 
 interface SellerPayload {
-  user: { id: string; name: string; image?: string | null; verifiedAt: string | null; createdAt: string };
+  user: {
+    id: string;
+    name: string;
+    image?: string | null;
+    verifiedAt: string | null;
+    role?: "user" | "business" | "admin";
+    businessName?: string | null;
+    tradeCount?: number;
+    ratingSum?: number;
+    ratingCount?: number;
+    createdAt: string;
+  };
   summary: { average: number | null; count: number };
   reviews: Review[];
 }
@@ -113,6 +124,17 @@ export default function SellerScreen() {
               {data.summary.average ? data.summary.average.toFixed(1) : "—"}
             </Text>
             <Text style={{ color: "#666680", fontSize: 13 }}>({data.summary.count})</Text>
+          </View>
+
+          <View style={{ flexDirection: "row", gap: 20, marginTop: 16 }}>
+            <View style={{ alignItems: "center" }}>
+              <Text style={{ color: "#D4A843", fontSize: 22, fontWeight: "900" }}>{data.user.tradeCount ?? 0}</Text>
+              <Text style={{ color: "#666680", fontSize: 11, fontWeight: "700" }}>TRADES</Text>
+            </View>
+            <View style={{ alignItems: "center" }}>
+              <Text style={{ color: "#D4A843", fontSize: 22, fontWeight: "900" }}>{data.summary.count}</Text>
+              <Text style={{ color: "#666680", fontSize: 11, fontWeight: "700" }}>REVIEWS</Text>
+            </View>
           </View>
         </View>
 

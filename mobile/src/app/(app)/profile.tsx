@@ -15,7 +15,7 @@ import { api } from "@/lib/api/api";
 import { authClient } from "@/lib/auth/auth-client";
 import { useSession, useInvalidateSession } from "@/lib/auth/use-session";
 import { User, Listing, formatPrice } from "@/lib/types";
-import { LogOut, ChevronRight, MapPin, Bell, ShieldCheck, Briefcase, Gift } from "lucide-react-native";
+import { LogOut, ChevronRight, MapPin, Bell, ShieldCheck, Briefcase, Gift, Wallet as WalletIcon, ScrollText, Star } from "lucide-react-native";
 import { Share } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -167,6 +167,68 @@ export default function ProfileScreen() {
               onChange={(v) => toggleNotif("notifyMarketing", v)}
             />
           </View>
+
+          <Pressable
+            testID="wallet-link"
+            onPress={() => router.push("/(app)/wallet" as any)}
+            style={{
+              flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+              backgroundColor: "#12121A", borderRadius: 16, borderWidth: 1, borderColor: "#1E1E2A",
+              padding: 16, marginTop: 16, gap: 12,
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <WalletIcon size={18} color="#D4A843" />
+              <View>
+                <Text style={{ color: "#FFFFFF", fontWeight: "700" }}>Wallet</Text>
+                <Text style={{ color: "#888", fontSize: 12, marginTop: 2 }}>Balance, escrow & transactions</Text>
+              </View>
+            </View>
+            <ChevronRight size={16} color="#666680" />
+          </Pressable>
+
+          <Pressable
+            testID="trades-link"
+            onPress={() => router.push("/(app)/trades" as any)}
+            style={{
+              flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+              backgroundColor: "#12121A", borderRadius: 16, borderWidth: 1, borderColor: "#1E1E2A",
+              padding: 16, marginTop: 12, gap: 12,
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <ScrollText size={18} color="#D4A843" />
+              <View>
+                <Text style={{ color: "#FFFFFF", fontWeight: "700" }}>Trades</Text>
+                <Text style={{ color: "#888", fontSize: 12, marginTop: 2 }}>
+                  {profile?.tradeCount ?? 0} completed
+                  {profile && profile.ratingCount ? ` · ★ ${((profile.ratingSum ?? 0) / Math.max(1, profile.ratingCount)).toFixed(1)} (${profile.ratingCount})` : ""}
+                </Text>
+              </View>
+            </View>
+            <ChevronRight size={16} color="#666680" />
+          </Pressable>
+
+          <Pressable
+            testID="kyc-link"
+            onPress={() => router.push("/(app)/kyc" as any)}
+            style={{
+              flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+              backgroundColor: "#12121A", borderRadius: 16, borderWidth: 1, borderColor: "#1E1E2A",
+              padding: 16, marginTop: 12, gap: 12,
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <ShieldCheck size={18} color="#D4A843" />
+              <View>
+                <Text style={{ color: "#FFFFFF", fontWeight: "700" }}>Identity verification</Text>
+                <Text style={{ color: "#888", fontSize: 12, marginTop: 2 }}>
+                  {profile?.verifiedAt ? "Verified" : "Required for high-value trades"}
+                </Text>
+              </View>
+            </View>
+            <ChevronRight size={16} color="#666680" />
+          </Pressable>
 
           <Pressable
             testID="saved-searches-link"

@@ -14,8 +14,118 @@ export interface User {
   businessName?: string | null;
   businessType?: "agency" | "dealer" | "developer" | "other" | null;
   referralCode?: string | null;
+  tradeCount?: number;
+  ratingSum?: number;
+  ratingCount?: number;
   createdAt: string;
   _count?: { listings: number; favorites: number };
+}
+
+export interface Wallet {
+  id: string;
+  userId: string;
+  balance: number; // minor units
+  pendingDebit: number;
+  pendingCredit: number;
+  currency: string;
+}
+
+export interface WalletTxn {
+  id: string;
+  kind:
+    | "deposit"
+    | "withdraw"
+    | "transfer_in"
+    | "transfer_out"
+    | "escrow_hold"
+    | "escrow_release"
+    | "escrow_refund"
+    | "fee"
+    | "boost";
+  amount: number;
+  currency: string;
+  description?: string | null;
+  refType?: string | null;
+  refId?: string | null;
+  createdAt: string;
+}
+
+export interface Trade {
+  id: string;
+  listingId: string;
+  buyerId: string;
+  sellerId: string;
+  amount: number;
+  currency: string;
+  feeAmount: number;
+  status:
+    | "initiated"
+    | "funded"
+    | "in_escrow"
+    | "delivered"
+    | "completed"
+    | "disputed"
+    | "refunded"
+    | "cancelled";
+  listing?: { id: string; title: string; images?: { url: string }[] };
+  buyer?: { id: string; name: string; image?: string | null };
+  seller?: { id: string; name: string; image?: string | null };
+  contract?: ContractRecord | null;
+  contractId?: string | null;
+  events?: TradeEventRecord[];
+  fundedAt?: string | null;
+  escrowedAt?: string | null;
+  deliveredAt?: string | null;
+  completedAt?: string | null;
+  createdAt: string;
+}
+
+export interface ContractRecord {
+  id: string;
+  terms: string;
+  status: "draft" | "signed_buyer" | "signed_seller" | "active" | "executed" | "voided";
+  buyerSignedAt: string | null;
+  sellerSignedAt: string | null;
+  chain?: string | null;
+  chainTxHash?: string | null;
+}
+
+export interface TradeEventRecord {
+  id: string;
+  kind: string;
+  actorId?: string | null;
+  note?: string | null;
+  createdAt: string;
+}
+
+export interface Bid {
+  id: string;
+  listingId: string;
+  bidderId: string;
+  amount: number;
+  currency: string;
+  status: "active" | "outbid" | "won" | "withdrawn" | "rejected";
+  bidder?: { id: string; name: string; image?: string | null };
+  createdAt: string;
+}
+
+export interface KycRecord {
+  id: string;
+  status: "unsubmitted" | "pending" | "approved" | "rejected";
+  rejectionReason?: string | null;
+  legalName?: string;
+  country?: string;
+  idType?: string;
+  submittedAt?: string | null;
+  reviewedAt?: string | null;
+}
+
+export function formatMoney(minor: number, currency: string): string {
+  // Some currencies are minor-unit-less; treat as integers.
+  const noMinors = ["RWF", "UGX", "TZS", "JPY", "KRW", "CLP", "VND"];
+  const major = noMinors.includes(currency.toUpperCase()) ? minor : minor / 100;
+  const sym = CURRENCIES[currency] || currency + " ";
+  return `${sym}${major.toLocaleString()}`;
 }
 
 export interface ListingImage {
@@ -88,6 +198,12 @@ export interface Listing {
   // Server-authoritative favorite state for the current user (omitted when anon)
   isFavorited?: boolean;
   viewCount?: number;
+  // Auction
+  auctionEndsAt?: string | null;
+  auctionClosed?: boolean;
+  minBid?: number | null;
+  reservePrice?: number | null;
+  bidIncrement?: number | null;
 }
 
 export type Category = "all" | "property" | "land" | "car" | "mining" | "machinery";

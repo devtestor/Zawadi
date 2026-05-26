@@ -62,6 +62,8 @@ function RootLayoutNav() {
           <Stack.Screen name="seller/[id]" />
           <Stack.Screen name="listing/analytics/[id]" />
           <Stack.Screen name="listing/compare" />
+          <Stack.Screen name="listing/bids/[id]" />
+          <Stack.Screen name="trade/[id]" />
         </Stack.Protected>
         <Stack.Protected guard={!session?.user}>
           <Stack.Screen name="sign-in" />
