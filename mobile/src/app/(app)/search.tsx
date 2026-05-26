@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -7,13 +7,23 @@ import {
   Pressable,
   StatusBar,
   ActivityIndicator,
+  Alert,
 } from "react-native";
-import { useQuery } from "@tanstack/react-query";
-import { Search, X } from "lucide-react-native";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { FlashList } from "@shopify/flash-list";
+import { useLocalSearchParams } from "expo-router";
+import { Search, X, BellPlus } from "lucide-react-native";
 import { api } from "@/lib/api/api";
 import { Listing, AFRICAN_COUNTRIES, Category, CATEGORY_LABELS } from "@/lib/types";
 import ListingCard from "@/components/ListingCard";
+import { ListingSkeletonList } from "@/components/ListingSkeleton";
+import VoiceSearchButton from "@/components/VoiceSearchButton";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+interface PageResult {
+  items: Listing[];
+  nextCursor: string | null;
+}
 
 const CATEGORIES: { key: Category; icon: string }[] = [
   { key: "all", icon: "🌍" },
@@ -25,33 +35,96 @@ const CATEGORIES: { key: Category; icon: string }[] = [
 ];
 
 export default function SearchScreen() {
-  const [search, setSearch] = useState("");
-  const [category, setCategory] = useState<Category>("all");
-  const [country, setCountry] = useState("");
+  const queryClient = useQueryClient();
+  const params = useLocalSearchParams<{ category?: string; country?: string; search?: string }>();
+  const [search, setSearch] = useState(params.search ?? "");
+  const [category, setCategory] = useState<Category>((params.category as Category) ?? "all");
+  const [country, setCountry] = useState(params.country ?? "");
   const [showCountryPicker, setShowCountryPicker] = useState(false);
+  const [countryQuery, setCountryQuery] = useState("");
 
-  const buildQuery = () => {
-    const params: string[] = [];
-    if (category !== "all") params.push(`category=${category}`);
-    if (country) params.push(`country=${encodeURIComponent(country)}`);
-    if (search.trim()) params.push(`search=${encodeURIComponent(search.trim())}`);
-    return params.length ? `?${params.join("&")}` : "";
+  // Re-apply when the user navigates here with new params.
+  useEffect(() => {
+    if (params.search !== undefined) setSearch(params.search);
+    if (params.category !== undefined) setCategory(params.category as Category);
+    if (params.country !== undefined) setCountry(params.country);
+  }, [params.search, params.category, params.country]);
+
+  const handleToggleFavorite = async (id: string) => {
+    await api.post(`/api/favorites/${id}`, {});
+    queryClient.invalidateQueries({ queryKey: ["search"] });
+    queryClient.invalidateQueries({ queryKey: ["favorites"] });
+    queryClient.invalidateQueries({ queryKey: ["listing", id] });
   };
 
-  const { data: listings = [], isLoading, refetch } = useQuery({
+  const hasFilter = !!(category !== "all" || country || search.trim());
+
+  const handleSaveSearch = async () => {
+    if (!hasFilter) {
+      Alert.alert("Set some filters first", "Pick a category, country, or keyword before saving.");
+      return;
+    }
+    const autoName =
+      (search.trim() || (category !== "all" ? category[0].toUpperCase() + category.slice(1) : "All")) +
+      (country ? ` in ${country}` : "");
+    try {
+      await api.post("/api/saved-searches", {
+        name: autoName,
+        category: category !== "all" ? category : undefined,
+        country: country || undefined,
+        search: search.trim() || undefined,
+      });
+      Alert.alert("Saved!", "We'll send you a push when matching listings appear.");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Could not save";
+      Alert.alert("Error", msg);
+    }
+  };
+
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+    refetch,
+  } = useInfiniteQuery<PageResult>({
     queryKey: ["search", search, category, country],
-    queryFn: () => api.get<Listing[]>(`/api/listings${buildQuery()}`),
-    enabled: true,
+    queryFn: ({ pageParam }) => {
+      const params = new URLSearchParams();
+      if (category !== "all") params.set("category", category);
+      if (country) params.set("country", country);
+      if (search.trim()) params.set("search", search.trim());
+      if (pageParam) params.set("cursor", String(pageParam));
+      params.set("limit", "20");
+      return api.get<PageResult>(`/api/listings?${params.toString()}`);
+    },
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.nextCursor,
   });
+
+  const listings = useMemo(() => data?.pages.flatMap((p) => p.items) ?? [], [data]);
 
   return (
     <View style={{ flex: 1, backgroundColor: "#0A0A0F" }} testID="search-screen">
       <StatusBar barStyle="light-content" />
       <SafeAreaView edges={["top"]} style={{ backgroundColor: "#0A0A0F" }}>
         <View style={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16 }}>
-          <Text style={{ color: "#FFFFFF", fontSize: 28, fontWeight: "900", marginBottom: 16 }}>
-            Search
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <Text style={{ color: "#FFFFFF", fontSize: 28, fontWeight: "900" }}>
+              Search
+            </Text>
+            {hasFilter ? (
+              <Pressable
+                testID="save-search-button"
+                onPress={handleSaveSearch}
+                style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#1E1E0A", borderWidth: 1, borderColor: "#D4A84366", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 }}
+              >
+                <BellPlus size={14} color="#D4A843" strokeWidth={2.5} />
+                <Text style={{ color: "#D4A843", fontSize: 12, fontWeight: "800" }}>Save search</Text>
+              </Pressable>
+            ) : null}
+          </View>
           {/* Search input */}
           <View style={{
             flexDirection: "row", alignItems: "center",
@@ -71,10 +144,11 @@ export default function SearchScreen() {
               onSubmitEditing={() => refetch()}
             />
             {search ? (
-              <Pressable testID="clear-search" onPress={() => setSearch("")}>
+              <Pressable testID="clear-search" onPress={() => setSearch("")} style={{ marginRight: 4 }}>
                 <X size={16} color="#666680" strokeWidth={2} />
               </Pressable>
             ) : null}
+            <VoiceSearchButton onTranscribed={(text) => setSearch(text)} />
           </View>
 
           {/* Category pills */}
@@ -127,22 +201,29 @@ export default function SearchScreen() {
           {showCountryPicker ? (
             <View style={{
               backgroundColor: "#16161E", borderRadius: 12, marginTop: 8,
-              borderWidth: 1, borderColor: "#2A2A3A", maxHeight: 200,
-              overflow: "hidden",
+              borderWidth: 1, borderColor: "#2A2A3A", overflow: "hidden",
             }}>
-              <ScrollView nestedScrollEnabled>
+              <TextInput
+                value={countryQuery}
+                onChangeText={setCountryQuery}
+                placeholder="Search countries..."
+                placeholderTextColor="#3A3A4A"
+                style={{ color: "#FFFFFF", fontSize: 14, padding: 14, borderBottomWidth: 1, borderBottomColor: "#2A2A3A" }}
+                autoCapitalize="none"
+              />
+              <ScrollView nestedScrollEnabled style={{ maxHeight: 200 }}>
                 {country ? (
                   <Pressable
-                    onPress={() => { setCountry(""); setShowCountryPicker(false); }}
+                    onPress={() => { setCountry(""); setShowCountryPicker(false); setCountryQuery(""); }}
                     style={{ padding: 14, borderBottomWidth: 1, borderBottomColor: "#2A2A3A" }}
                   >
                     <Text style={{ color: "#FF6B6B", fontSize: 14, fontWeight: "600" }}>Clear filter ✕</Text>
                   </Pressable>
                 ) : null}
-                {AFRICAN_COUNTRIES.map((c) => (
+                {AFRICAN_COUNTRIES.filter((c) => !countryQuery || c.toLowerCase().includes(countryQuery.toLowerCase())).map((c) => (
                   <Pressable
                     key={c}
-                    onPress={() => { setCountry(c); setShowCountryPicker(false); }}
+                    onPress={() => { setCountry(c); setShowCountryPicker(false); setCountryQuery(""); }}
                     style={{
                       padding: 14, borderBottomWidth: 1, borderBottomColor: "#1A1A2A",
                       backgroundColor: country === c ? "#1E1E2A" : "transparent",
@@ -159,11 +240,35 @@ export default function SearchScreen() {
         </View>
       </SafeAreaView>
 
-      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-        <View style={{ paddingHorizontal: 20, paddingBottom: 120 }}>
-          {isLoading ? (
-            <ActivityIndicator testID="search-loading" color="#D4A843" size="large" style={{ marginTop: 40 }} />
-          ) : listings.length === 0 ? (
+      <FlashList
+        testID="search-results"
+        data={listings}
+        keyExtractor={(item) => item.id}
+        estimatedItemSize={320}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
+        onEndReachedThreshold={0.5}
+        onEndReached={() => {
+          if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+        }}
+        renderItem={({ item }) => (
+          <View style={{ marginBottom: 16 }}>
+            <ListingCard listing={item} favorited={!!item.isFavorited} onToggleFavorite={handleToggleFavorite} />
+          </View>
+        )}
+        ListHeaderComponent={
+          listings.length > 0 ? (
+            <Text style={{ color: "#666680", fontSize: 13, marginBottom: 12, paddingTop: 4 }}>
+              {listings.length} result{listings.length === 1 ? "" : "s"}
+              {hasNextPage ? "+" : ""}
+            </Text>
+          ) : null
+        }
+        ListEmptyComponent={
+          isLoading ? (
+            <View style={{ paddingTop: 16 }}>
+              <ListingSkeletonList count={3} />
+            </View>
+          ) : (
             <View style={{ alignItems: "center", paddingTop: 60 }}>
               <Text style={{ fontSize: 48, marginBottom: 16 }}>🔍</Text>
               <Text style={{ color: "#FFFFFF", fontSize: 18, fontWeight: "700" }}>No results found</Text>
@@ -171,18 +276,14 @@ export default function SearchScreen() {
                 Try adjusting your search or filters
               </Text>
             </View>
-          ) : (
-            <View style={{ gap: 16 }}>
-              <Text style={{ color: "#666680", fontSize: 13, marginBottom: 4 }}>
-                {listings.length} results
-              </Text>
-              {listings.map((listing) => (
-                <ListingCard key={listing.id} listing={listing} />
-              ))}
-            </View>
-          )}
-        </View>
-      </ScrollView>
+          )
+        }
+        ListFooterComponent={
+          isFetchingNextPage ? (
+            <ActivityIndicator testID="search-loading-more" color="#D4A843" style={{ marginVertical: 16 }} />
+          ) : null
+        }
+      />
     </View>
   );
 }

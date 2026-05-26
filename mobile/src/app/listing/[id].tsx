@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -10,7 +10,11 @@ import {
   Image,
   Alert,
   Linking,
+  Share,
+  Platform,
 } from "react-native";
+import MapView, { Marker, PROVIDER_DEFAULT } from "react-native-maps";
+import { Galeria } from "@nandorojo/galeria";
 import { useLocalSearchParams, router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api/api";
@@ -24,6 +28,14 @@ import {
   Mail,
   CheckCircle,
   Zap,
+  Pencil,
+  Trash2,
+  CheckCheck,
+  RotateCcw,
+  Share2,
+  Flag,
+  MessageSquare,
+  BarChart3,
 } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -36,7 +48,6 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 export default function ListingDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [favorited, setFavorited] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const { data: session } = useSession();
   const queryClient = useQueryClient();
@@ -46,21 +57,41 @@ export default function ListingDetailScreen() {
     queryFn: () => api.get<Listing>(`/api/listings/${id}`),
   });
 
+  const favorited = !!listing?.isFavorited;
+
+  useEffect(() => {
+    if (!id) return;
+    // Best-effort view counter bump.
+    api.post(`/api/listings/${id}/view`, {}).catch(() => {});
+  }, [id]);
+
   const handleToggleFavorite = async () => {
     if (!session?.user) {
       Alert.alert("Sign in required", "Please sign in to save listings");
       return;
     }
-    setFavorited(!favorited);
-    await api.post(`/api/favorites/${id}`, {});
-    queryClient.invalidateQueries({ queryKey: ["favorites"] });
+    queryClient.setQueryData<Listing | undefined>(["listing", id], (old) =>
+      old ? { ...old, isFavorited: !old.isFavorited } : old,
+    );
+    try {
+      await api.post(`/api/favorites/${id}`, {});
+      queryClient.invalidateQueries({ queryKey: ["favorites"] });
+      queryClient.invalidateQueries({ queryKey: ["listings"] });
+    } catch {
+      queryClient.invalidateQueries({ queryKey: ["listing", id] });
+    }
   };
 
-  const handleContact = (type: "phone" | "email") => {
+  const handleContact = (type: "phone" | "email" | "whatsapp") => {
     if (type === "phone" && listing?.user?.phone) {
       Linking.openURL(`tel:${listing.user.phone}`);
     } else if (type === "email" && listing?.user?.email) {
       Linking.openURL(`mailto:${listing.user.email}?subject=Inquiry about ${listing?.title}`);
+    } else if (type === "whatsapp" && listing?.user?.phone) {
+      // Strip non-digits for the wa.me link.
+      const phone = listing.user.phone.replace(/[^0-9]/g, "");
+      const text = encodeURIComponent(`Hi, I'm interested in your ZAWADI listing: ${listing.title}`);
+      Linking.openURL(`https://wa.me/${phone}?text=${text}`);
     }
   };
 
@@ -96,23 +127,26 @@ export default function ListingDetailScreen() {
         {/* Images */}
         <View style={{ width, height: 320, backgroundColor: "#12121A" }}>
           {listing.images.length > 0 ? (
-            <ScrollView
-              horizontal
-              pagingEnabled
-              showsHorizontalScrollIndicator={false}
-              onMomentumScrollEnd={(e) => {
-                setCurrentImageIndex(Math.round(e.nativeEvent.contentOffset.x / width));
-              }}
-            >
-              {listing.images.map((img) => (
-                <Image
-                  key={img.id}
-                  source={{ uri: img.url }}
-                  style={{ width, height: 320 }}
-                  resizeMode="cover"
-                />
-              ))}
-            </ScrollView>
+            <Galeria urls={listing.images.map((i) => i.url)}>
+              <ScrollView
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                onMomentumScrollEnd={(e) => {
+                  setCurrentImageIndex(Math.round(e.nativeEvent.contentOffset.x / width));
+                }}
+              >
+                {listing.images.map((img, idx) => (
+                  <Galeria.Image key={img.id} index={idx}>
+                    <Image
+                      source={{ uri: img.url }}
+                      style={{ width, height: 320 }}
+                      resizeMode="cover"
+                    />
+                  </Galeria.Image>
+                ))}
+              </ScrollView>
+            </Galeria>
           ) : (
             <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
               <Text style={{ fontSize: 80 }}>
@@ -155,18 +189,40 @@ export default function ListingDetailScreen() {
               >
                 <ArrowLeft size={20} color="#FFFFFF" strokeWidth={2.5} />
               </Pressable>
-              <Pressable
-                testID="favorite-button"
-                onPress={handleToggleFavorite}
-                style={{
-                  width: 42, height: 42, borderRadius: 21,
-                  backgroundColor: "rgba(10,10,15,0.8)",
-                  alignItems: "center", justifyContent: "center",
-                  borderWidth: 1, borderColor: "rgba(255,255,255,0.1)",
-                }}
-              >
-                <Heart size={20} color={favorited ? "#FF6B6B" : "#FFFFFF"} fill={favorited ? "#FF6B6B" : "transparent"} strokeWidth={2} />
-              </Pressable>
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <Pressable
+                  testID="share-button"
+                  onPress={async () => {
+                    const url = `zawadi://listing/${listing.id}`;
+                    const message = `${listing.title} — ${listing.country}${listing.city ? `, ${listing.city}` : ""}\n\nView on ZAWADI: ${url}`;
+                    try {
+                      await Share.share(Platform.OS === "ios" ? { message, url } : { message });
+                    } catch {
+                      // user cancelled — ignore
+                    }
+                  }}
+                  style={{
+                    width: 42, height: 42, borderRadius: 21,
+                    backgroundColor: "rgba(10,10,15,0.8)",
+                    alignItems: "center", justifyContent: "center",
+                    borderWidth: 1, borderColor: "rgba(255,255,255,0.1)",
+                  }}
+                >
+                  <Share2 size={18} color="#FFFFFF" strokeWidth={2.5} />
+                </Pressable>
+                <Pressable
+                  testID="favorite-button"
+                  onPress={handleToggleFavorite}
+                  style={{
+                    width: 42, height: 42, borderRadius: 21,
+                    backgroundColor: "rgba(10,10,15,0.8)",
+                    alignItems: "center", justifyContent: "center",
+                    borderWidth: 1, borderColor: "rgba(255,255,255,0.1)",
+                  }}
+                >
+                  <Heart size={20} color={favorited ? "#FF6B6B" : "#FFFFFF"} fill={favorited ? "#FF6B6B" : "transparent"} strokeWidth={2} />
+                </Pressable>
+              </View>
             </View>
           </SafeAreaView>
 
@@ -302,6 +358,12 @@ export default function ListingDetailScreen() {
               <Text style={{ color: "#888", fontSize: 11, marginBottom: 2 }}>Listed</Text>
               <Text style={{ color: "#FFFFFF", fontSize: 13, fontWeight: "700" }}>{createdDate}</Text>
             </View>
+            {typeof listing.viewCount === "number" ? (
+              <View style={{ backgroundColor: "#16161E", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: "#2A2A3A" }}>
+                <Text style={{ color: "#888", fontSize: 11, marginBottom: 2 }}>Views</Text>
+                <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "800" }}>{listing.viewCount.toLocaleString()}</Text>
+              </View>
+            ) : null}
           </View>
 
           {/* Description */}
@@ -310,44 +372,211 @@ export default function ListingDetailScreen() {
             <Text style={{ color: "#888", fontSize: 15, lineHeight: 26 }}>{listing.description}</Text>
           </View>
 
+          {/* Map */}
+          {typeof listing.latitude === "number" && typeof listing.longitude === "number" ? (
+            <View style={{ marginBottom: 24 }}>
+              <Text style={{ color: "#FFFFFF", fontSize: 18, fontWeight: "800", marginBottom: 12 }}>Location</Text>
+              <View style={{ height: 200, borderRadius: 16, overflow: "hidden", borderWidth: 1, borderColor: "#1E1E2A" }}>
+                <MapView
+                  provider={PROVIDER_DEFAULT}
+                  style={{ flex: 1 }}
+                  initialRegion={{
+                    latitude: listing.latitude,
+                    longitude: listing.longitude,
+                    latitudeDelta: 0.05,
+                    longitudeDelta: 0.05,
+                  }}
+                  pointerEvents="none"
+                >
+                  <Marker
+                    coordinate={{ latitude: listing.latitude, longitude: listing.longitude }}
+                    pinColor={categoryColor}
+                  />
+                </MapView>
+              </View>
+              <Pressable
+                testID="open-in-maps"
+                onPress={() => {
+                  const lat = listing.latitude;
+                  const lng = listing.longitude;
+                  const url = Platform.select({
+                    ios: `http://maps.apple.com/?ll=${lat},${lng}&q=${encodeURIComponent(listing.title)}`,
+                    android: `geo:${lat},${lng}?q=${lat},${lng}(${encodeURIComponent(listing.title)})`,
+                  });
+                  if (url) Linking.openURL(url);
+                }}
+                style={{ marginTop: 10, alignSelf: "flex-start" }}
+              >
+                <Text style={{ color: "#D4A843", fontSize: 13, fontWeight: "700" }}>Open in Maps →</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
           <View style={{ height: 1, backgroundColor: "#1E1E2A", marginBottom: 24 }} />
 
-          {/* Owner boost CTA */}
+          {/* Owner actions */}
           {session?.user?.id === listing.user?.id ? (
+            <>
+              <View style={{ flexDirection: "row", gap: 10, marginBottom: 16 }}>
+                <Pressable
+                  testID="edit-listing-button"
+                  onPress={() => router.push({ pathname: "/listing/edit/[id]" as any, params: { id: listing.id } })}
+                  style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "#16161E", borderWidth: 1, borderColor: "#2A2A3A", borderRadius: 12, paddingVertical: 12 }}
+                >
+                  <Pencil size={14} color="#D4A843" strokeWidth={2.5} />
+                  <Text style={{ color: "#D4A843", fontSize: 13, fontWeight: "800" }}>Edit</Text>
+                </Pressable>
+                <Pressable
+                  testID="toggle-sold-button"
+                  onPress={async () => {
+                    const nextStatus = listing.status === "sold" ? "active" : "sold";
+                    try {
+                      await api.put(`/api/listings/${listing.id}`, { status: nextStatus });
+                      queryClient.invalidateQueries({ queryKey: ["listing", listing.id] });
+                      queryClient.invalidateQueries({ queryKey: ["listings"] });
+                      queryClient.invalidateQueries({ queryKey: ["my-listings"] });
+                    } catch (e: unknown) {
+                      const msg = e instanceof Error ? e.message : "Could not update status";
+                      Alert.alert("Error", msg);
+                    }
+                  }}
+                  style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: listing.status === "sold" ? "#0A1F14" : "#16161E", borderWidth: 1, borderColor: listing.status === "sold" ? "#1A6B4A" : "#2A2A3A", borderRadius: 12, paddingVertical: 12 }}
+                >
+                  {listing.status === "sold" ? (
+                    <>
+                      <RotateCcw size={14} color="#1A6B4A" strokeWidth={2.5} />
+                      <Text style={{ color: "#1A6B4A", fontSize: 13, fontWeight: "800" }}>Reactivate</Text>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCheck size={14} color="#888" strokeWidth={2.5} />
+                      <Text style={{ color: "#888", fontSize: 13, fontWeight: "800" }}>Mark sold</Text>
+                    </>
+                  )}
+                </Pressable>
+                <Pressable
+                  testID="delete-listing-button"
+                  onPress={() => {
+                    Alert.alert(
+                      "Delete listing?",
+                      "This cannot be undone.",
+                      [
+                        { text: "Cancel", style: "cancel" },
+                        {
+                          text: "Delete",
+                          style: "destructive",
+                          onPress: async () => {
+                            try {
+                              await api.delete(`/api/listings/${listing.id}`);
+                              queryClient.invalidateQueries({ queryKey: ["listings"] });
+                              queryClient.invalidateQueries({ queryKey: ["my-listings"] });
+                              router.back();
+                            } catch (e: unknown) {
+                              const msg = e instanceof Error ? e.message : "Could not delete";
+                              Alert.alert("Error", msg);
+                            }
+                          },
+                        },
+                      ],
+                    );
+                  }}
+                  style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "#2D1515", borderWidth: 1, borderColor: "#5D2020", borderRadius: 12, paddingVertical: 12 }}
+                >
+                  <Trash2 size={14} color="#FF6B6B" strokeWidth={2.5} />
+                  <Text style={{ color: "#FF6B6B", fontSize: 13, fontWeight: "800" }}>Delete</Text>
+                </Pressable>
+              </View>
+              <Pressable
+                testID="analytics-link"
+                onPress={() => router.push({ pathname: "/listing/analytics/[id]" as any, params: { id: listing.id } })}
+                style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "#12121A", borderWidth: 1, borderColor: "#1E1E2A", borderRadius: 16, padding: 16, marginBottom: 12 }}
+              >
+                <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "#1E1E0A", alignItems: "center", justifyContent: "center" }}>
+                  <BarChart3 size={18} color="#D4A843" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: "#FFFFFF", fontWeight: "800" }}>View analytics</Text>
+                  <Text style={{ color: "#888", fontSize: 12, marginTop: 2 }}>Views, saves & messages — last 30 days</Text>
+                </View>
+                <Text style={{ color: "#D4A843", fontSize: 18 }}>→</Text>
+              </Pressable>
+              <Pressable
+                testID="boost-listing-button"
+                onPress={() => router.push({ pathname: "/boost/[id]" as any, params: { id: listing.id } })}
+                style={{
+                  flexDirection: "row", alignItems: "center",
+                  backgroundColor: listing.boosted ? "#12121A" : "#1E1E0A",
+                  borderRadius: 16, padding: 18, marginBottom: 24,
+                  borderWidth: 1, borderColor: listing.boosted ? "#2A2A3A" : "#D4A84366",
+                }}
+              >
+                <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: "#D4A84322", alignItems: "center", justifyContent: "center", marginRight: 14 }}>
+                  <Zap size={20} color="#D4A843" fill="#D4A843" strokeWidth={2} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "800" }}>
+                    {listing.boosted ? "Extend boost" : "Boost this listing"}
+                  </Text>
+                  <Text style={{ color: "#888", fontSize: 12, marginTop: 2 }}>
+                    {listing.boosted && listing.boostedUntil
+                      ? `Featured until ${new Date(listing.boostedUntil).toLocaleDateString()}`
+                      : "Get 10× more views from $5"}
+                  </Text>
+                </View>
+                <Text style={{ color: "#D4A843", fontSize: 20 }}>→</Text>
+              </Pressable>
+            </>
+          ) : null}
+
+          {/* Report (non-owner only) */}
+          {session?.user && session.user.id !== listing.user?.id ? (
             <Pressable
-              testID="boost-listing-button"
-              onPress={() => router.push({ pathname: "/boost/[id]" as any, params: { id: listing.id } })}
-              style={{
-                flexDirection: "row", alignItems: "center",
-                backgroundColor: listing.boosted ? "#12121A" : "#1E1E0A",
-                borderRadius: 16, padding: 18, marginBottom: 24,
-                borderWidth: 1, borderColor: listing.boosted ? "#2A2A3A" : "#D4A84366",
+              testID="report-listing-button"
+              onPress={() => {
+                Alert.alert(
+                  "Report this listing",
+                  "Why are you reporting it?",
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    ...([
+                      ["spam", "Spam"],
+                      ["scam", "Scam / fraud"],
+                      ["offensive", "Offensive content"],
+                      ["wrong_category", "Wrong category"],
+                      ["other", "Other"],
+                    ] as const).map(([reason, label]) => ({
+                      text: label,
+                      onPress: async () => {
+                        try {
+                          await api.post("/api/reports", { listingId: listing.id, reason });
+                          Alert.alert("Thanks", "Our team will review this listing.");
+                        } catch (e: unknown) {
+                          const msg = e instanceof Error ? e.message : "Could not submit report";
+                          Alert.alert("Error", msg);
+                        }
+                      },
+                    })),
+                  ],
+                );
               }}
+              style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 24 }}
             >
-              <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: "#D4A84322", alignItems: "center", justifyContent: "center", marginRight: 14 }}>
-                <Zap size={20} color="#D4A843" fill="#D4A843" strokeWidth={2} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: "#FFFFFF", fontSize: 15, fontWeight: "800" }}>
-                  {listing.boosted ? "Extend boost" : "Boost this listing"}
-                </Text>
-                <Text style={{ color: "#888", fontSize: 12, marginTop: 2 }}>
-                  {listing.boosted && listing.boostedUntil
-                    ? `Featured until ${new Date(listing.boostedUntil).toLocaleDateString()}`
-                    : "Get 10× more views from $5"}
-                </Text>
-              </View>
-              <Text style={{ color: "#D4A843", fontSize: 20 }}>→</Text>
+              <Flag size={13} color="#666680" strokeWidth={2.5} />
+              <Text style={{ color: "#666680", fontSize: 12, fontWeight: "600" }}>Report this listing</Text>
             </Pressable>
           ) : null}
 
           {/* Seller info */}
           <View style={{ marginBottom: 100 }}>
             <Text style={{ color: "#FFFFFF", fontSize: 18, fontWeight: "800", marginBottom: 16 }}>Listed by</Text>
-            <View style={{
-              backgroundColor: "#12121A", borderRadius: 16, padding: 20,
-              borderWidth: 1, borderColor: "#1E1E2A",
-            }}>
+            <Pressable
+              testID="seller-card"
+              onPress={() => listing.user?.id && router.push({ pathname: "/seller/[id]" as any, params: { id: listing.user.id } })}
+              style={{
+                backgroundColor: "#12121A", borderRadius: 16, padding: 20,
+                borderWidth: 1, borderColor: "#1E1E2A",
+              }}
+            >
               <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16 }}>
                 <View style={{
                   width: 52, height: 52, borderRadius: 26,
@@ -359,27 +588,52 @@ export default function ListingDetailScreen() {
                   </Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "800" }}>{listing.user?.name}</Text>
-                  <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4, gap: 4 }}>
-                    <CheckCircle size={12} color="#1A6B4A" fill="#1A6B4A" />
-                    <Text style={{ color: "#1A6B4A", fontSize: 12, fontWeight: "600" }}>Verified seller</Text>
-                  </View>
+                  <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "800" }}>
+                    {listing.user?.businessName || listing.user?.name}
+                  </Text>
+                  {listing.user?.role === "business" ? (
+                    <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4, gap: 4 }}>
+                      <CheckCircle size={12} color="#D4A843" fill="#D4A843" />
+                      <Text style={{ color: "#D4A843", fontSize: 12, fontWeight: "700" }}>Verified business</Text>
+                    </View>
+                  ) : listing.user?.verifiedAt ? (
+                    <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4, gap: 4 }}>
+                      <CheckCircle size={12} color="#1A6B4A" fill="#1A6B4A" />
+                      <Text style={{ color: "#1A6B4A", fontSize: 12, fontWeight: "600" }}>Verified seller</Text>
+                    </View>
+                  ) : (
+                    <Text style={{ color: "#666680", fontSize: 12, marginTop: 4 }}>New seller</Text>
+                  )}
                 </View>
               </View>
 
-              <View style={{ flexDirection: "row", gap: 12 }}>
+              <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
                 {listing.user?.phone ? (
                   <Pressable
                     testID="call-button"
                     onPress={() => handleContact("phone")}
                     style={{
-                      flex: 1, backgroundColor: "#1A6B4A",
+                      flex: 1, minWidth: 90, backgroundColor: "#1A6B4A",
                       borderRadius: 12, paddingVertical: 14,
-                      flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+                      flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
                     }}
                   >
-                    <Phone size={16} color="#FFFFFF" strokeWidth={2.5} />
-                    <Text style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "800" }}>Call</Text>
+                    <Phone size={14} color="#FFFFFF" strokeWidth={2.5} />
+                    <Text style={{ color: "#FFFFFF", fontSize: 13, fontWeight: "800" }}>Call</Text>
+                  </Pressable>
+                ) : null}
+                {listing.user?.phone ? (
+                  <Pressable
+                    testID="whatsapp-button"
+                    onPress={() => handleContact("whatsapp")}
+                    style={{
+                      flex: 1, minWidth: 90, backgroundColor: "#25D366",
+                      borderRadius: 12, paddingVertical: 14,
+                      flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
+                    }}
+                  >
+                    <MessageSquare size={14} color="#0A0A0F" strokeWidth={2.5} />
+                    <Text style={{ color: "#0A0A0F", fontSize: 13, fontWeight: "800" }}>WhatsApp</Text>
                   </Pressable>
                 ) : null}
                 {listing.user?.email ? (
@@ -387,41 +641,58 @@ export default function ListingDetailScreen() {
                     testID="email-button"
                     onPress={() => handleContact("email")}
                     style={{
-                      flex: 1, backgroundColor: "#16161E",
+                      flex: 1, minWidth: 90, backgroundColor: "#16161E",
                       borderRadius: 12, paddingVertical: 14,
-                      flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+                      flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
                       borderWidth: 1, borderColor: "#2A2A3A",
                     }}
                   >
-                    <Mail size={16} color="#D4A843" strokeWidth={2.5} />
-                    <Text style={{ color: "#D4A843", fontSize: 14, fontWeight: "800" }}>Email</Text>
+                    <Mail size={14} color="#D4A843" strokeWidth={2.5} />
+                    <Text style={{ color: "#D4A843", fontSize: 13, fontWeight: "800" }}>Email</Text>
                   </Pressable>
                 ) : null}
               </View>
-            </View>
+            </Pressable>
           </View>
         </View>
       </ScrollView>
 
       {/* Bottom CTA */}
-      <View style={{
-        position: "absolute", bottom: 0, left: 0, right: 0,
-        backgroundColor: "#0A0A0F", borderTopWidth: 1, borderTopColor: "#1E1E2A",
-        paddingHorizontal: 20, paddingTop: 16, paddingBottom: 40,
-      }}>
-        <Pressable
-          testID="contact-seller-button"
-          onPress={() => listing.user?.phone ? handleContact("phone") : handleContact("email")}
-          style={{ borderRadius: 16, overflow: "hidden" }}
-        >
-          <LinearGradient colors={["#D4A843", "#E8890C"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-            style={{ paddingVertical: 18, alignItems: "center" }}>
-            <Text style={{ color: "#0A0A0F", fontSize: 17, fontWeight: "800" }}>
-              Contact Seller
-            </Text>
-          </LinearGradient>
-        </Pressable>
-      </View>
+      {session?.user?.id !== listing.user?.id ? (
+        <View style={{
+          position: "absolute", bottom: 0, left: 0, right: 0,
+          backgroundColor: "#0A0A0F", borderTopWidth: 1, borderTopColor: "#1E1E2A",
+          paddingHorizontal: 20, paddingTop: 16, paddingBottom: 40,
+        }}>
+          <Pressable
+            testID="message-seller-button"
+            onPress={async () => {
+              if (!session?.user) {
+                Alert.alert("Sign in required", "Please sign in to message sellers");
+                return;
+              }
+              try {
+                const result = await api.post<{ id: string }>("/api/messages/start", {
+                  recipientId: listing.user.id,
+                  listingId: listing.id,
+                });
+                router.push({ pathname: "/chat/[id]" as any, params: { id: result.id } });
+              } catch (e: unknown) {
+                const msg = e instanceof Error ? e.message : "Could not start conversation";
+                Alert.alert("Error", msg);
+              }
+            }}
+            style={{ borderRadius: 16, overflow: "hidden" }}
+          >
+            <LinearGradient colors={["#D4A843", "#E8890C"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+              style={{ paddingVertical: 18, alignItems: "center" }}>
+              <Text style={{ color: "#0A0A0F", fontSize: 17, fontWeight: "800" }}>
+                Message Seller
+              </Text>
+            </LinearGradient>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 }

@@ -7,6 +7,7 @@ import {
   StatusBar,
   Alert,
   ActivityIndicator,
+  Switch,
 } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
@@ -14,18 +15,34 @@ import { api } from "@/lib/api/api";
 import { authClient } from "@/lib/auth/auth-client";
 import { useSession, useInvalidateSession } from "@/lib/auth/use-session";
 import { User, Listing, formatPrice } from "@/lib/types";
-import { LogOut, ChevronRight, MapPin } from "lucide-react-native";
+import { LogOut, ChevronRight, MapPin, Bell, ShieldCheck, Briefcase, Gift } from "lucide-react-native";
+import { Share } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function ProfileScreen() {
   const { data: session } = useSession();
   const invalidateSession = useInvalidateSession();
+  const queryClient = useQueryClient();
 
   const { data: profile } = useQuery({
     queryKey: ["profile"],
     queryFn: () => api.get<User>("/api/me"),
     enabled: !!session?.user,
   });
+
+  const toggleNotif = async (
+    key: "notifyChat" | "notifyMarketing" | "notifySavedSearches",
+    value: boolean,
+  ) => {
+    queryClient.setQueryData<User | undefined>(["profile"], (old) =>
+      old ? { ...old, [key]: value } : old,
+    );
+    try {
+      await api.put("/api/me/notifications", { [key]: value });
+    } catch {
+      queryClient.invalidateQueries({ queryKey: ["profile"] });
+    }
+  };
 
   const { data: myListings = [], isLoading } = useQuery({
     queryKey: ["my-listings"],
@@ -125,6 +142,121 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {/* Settings */}
+        <View style={{ paddingHorizontal: 20, marginBottom: 24 }}>
+          <Text style={{ color: "#FFFFFF", fontSize: 18, fontWeight: "800", marginBottom: 12 }}>Notifications</Text>
+          <View style={{ backgroundColor: "#12121A", borderRadius: 16, borderWidth: 1, borderColor: "#1E1E2A" }}>
+            <SettingRow
+              icon={<Bell size={16} color="#D4A843" />}
+              label="Chat messages"
+              value={profile?.notifyChat ?? true}
+              onChange={(v) => toggleNotif("notifyChat", v)}
+            />
+            <Divider />
+            <SettingRow
+              icon={<Bell size={16} color="#D4A843" />}
+              label="Saved-search alerts"
+              value={profile?.notifySavedSearches ?? true}
+              onChange={(v) => toggleNotif("notifySavedSearches", v)}
+            />
+            <Divider />
+            <SettingRow
+              icon={<Bell size={16} color="#D4A843" />}
+              label="Marketing & tips"
+              value={profile?.notifyMarketing ?? false}
+              onChange={(v) => toggleNotif("notifyMarketing", v)}
+            />
+          </View>
+
+          <Pressable
+            testID="saved-searches-link"
+            onPress={() => router.push("/(app)/saved-searches" as any)}
+            style={{
+              flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+              backgroundColor: "#12121A", borderRadius: 16, borderWidth: 1, borderColor: "#1E1E2A",
+              padding: 16, marginTop: 16, gap: 12,
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <Bell size={18} color="#D4A843" />
+              <View>
+                <Text style={{ color: "#FFFFFF", fontWeight: "700" }}>Saved searches</Text>
+                <Text style={{ color: "#888", fontSize: 12, marginTop: 2 }}>Manage your alert filters</Text>
+              </View>
+            </View>
+            <ChevronRight size={16} color="#666680" />
+          </Pressable>
+
+          {profile?.referralCode ? (
+            <Pressable
+              testID="referral-share"
+              onPress={() =>
+                Share.share({
+                  message: `Use my ZAWADI code ${profile.referralCode} when you sign up — we both unlock a free boost.`,
+                })
+              }
+              style={{
+                flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+                backgroundColor: "#12121A", borderRadius: 16, borderWidth: 1, borderColor: "#1E1E2A",
+                padding: 16, marginTop: 16, gap: 12,
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <Gift size={18} color="#D4A843" />
+                <View>
+                  <Text style={{ color: "#FFFFFF", fontWeight: "700" }}>Your invite code</Text>
+                  <Text style={{ color: "#D4A843", fontSize: 14, fontWeight: "900", marginTop: 2, letterSpacing: 2 }}>
+                    {profile.referralCode}
+                  </Text>
+                </View>
+              </View>
+              <Text style={{ color: "#D4A843", fontWeight: "800" }}>Share</Text>
+            </Pressable>
+          ) : null}
+
+          {profile && profile.role !== "business" && profile.role !== "admin" ? (
+            <Pressable
+              testID="business-apply-link"
+              onPress={() => router.push("/(app)/business-apply" as any)}
+              style={{
+                flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+                backgroundColor: "#12121A", borderRadius: 16, borderWidth: 1, borderColor: "#1E1E2A",
+                padding: 16, marginTop: 16, gap: 12,
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <Briefcase size={18} color="#D4A843" />
+                <View>
+                  <Text style={{ color: "#FFFFFF", fontWeight: "700" }}>Become a business seller</Text>
+                  <Text style={{ color: "#888", fontSize: 12, marginTop: 2 }}>Higher listing limits + verified badge</Text>
+                </View>
+              </View>
+              <ChevronRight size={16} color="#666680" />
+            </Pressable>
+          ) : null}
+
+          {profile && !profile.phoneVerified ? (
+            <Pressable
+              testID="verify-phone-link"
+              onPress={() => router.push("/(app)/verify-phone" as any)}
+              style={{
+                flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+                backgroundColor: "#12121A", borderRadius: 16, borderWidth: 1, borderColor: "#1E1E2A",
+                padding: 16, marginTop: 16, gap: 12,
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <ShieldCheck size={18} color="#D4A843" />
+                <View>
+                  <Text style={{ color: "#FFFFFF", fontWeight: "700" }}>Verify your phone</Text>
+                  <Text style={{ color: "#888", fontSize: 12, marginTop: 2 }}>Builds trust with buyers</Text>
+                </View>
+              </View>
+              <ChevronRight size={16} color="#666680" />
+            </Pressable>
+          ) : null}
+        </View>
+
         {/* My Listings */}
         <View style={{ paddingHorizontal: 20, marginBottom: 120 }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
@@ -209,4 +341,33 @@ export default function ProfileScreen() {
       </ScrollView>
     </View>
   );
+}
+
+function SettingRow({
+  icon,
+  label,
+  value,
+  onChange,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", padding: 16, gap: 12 }}>
+      {icon}
+      <Text style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "600", flex: 1 }}>{label}</Text>
+      <Switch
+        value={value}
+        onValueChange={onChange}
+        trackColor={{ false: "#2A2A3A", true: "#D4A843" }}
+        thumbColor="#FFFFFF"
+      />
+    </View>
+  );
+}
+
+function Divider() {
+  return <View style={{ height: 1, backgroundColor: "#1E1E2A", marginLeft: 16 }} />;
 }

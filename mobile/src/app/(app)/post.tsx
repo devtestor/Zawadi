@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -16,8 +16,9 @@ import { AFRICAN_COUNTRIES, MACHINERY_TYPES } from "@/lib/types";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
-import { pickImage, uploadFile } from "@/lib/upload";
-import { Plus, X } from "lucide-react-native";
+import { pickImages, uploadMany } from "@/lib/upload";
+import { Plus, X, Sparkles } from "lucide-react-native";
+import { clearDraft, loadDraft, saveDraft } from "@/lib/drafts";
 
 const MIN_IMAGES = 3;
 const MAX_IMAGES = 5;
@@ -100,26 +101,134 @@ export default function PostScreen() {
   const [machineryHours, setMachineryHours] = useState("");
   const [machineryCondition, setMachineryCondition] = useState<"new" | "used">("used");
   const [showCountryPicker, setShowCountryPicker] = useState(false);
+  const [countryQuery, setCountryQuery] = useState("");
   const [listingType, setListingType] = useState<"sale" | "rent">("sale");
   const [rentalPeriod, setRentalPeriod] = useState<RentalPeriod>("month");
   const [images, setImages] = useState<string[]>([]);
+  const [imageMeta, setImageMeta] = useState<Record<string, { pHash?: string | null }>>({});
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const draftLoaded = useRef(false);
 
   const canHaveRental = category === "property" || category === "land" || category === "car" || category === "machinery";
 
+  // Restore draft on mount.
+  useEffect(() => {
+    (async () => {
+      const d = await loadDraft();
+      if (!d) {
+        draftLoaded.current = true;
+        return;
+      }
+      Alert.alert(
+        "Resume your draft?",
+        "We saved your unfinished listing.",
+        [
+          {
+            text: "Discard",
+            style: "destructive",
+            onPress: async () => {
+              await clearDraft();
+              draftLoaded.current = true;
+            },
+          },
+          {
+            text: "Resume",
+            onPress: () => {
+              setStep(d.step ?? 1);
+              setCategory((d.category as PostCategory | null) ?? null);
+              setTitle(d.title ?? "");
+              setDescription(d.description ?? "");
+              setPrice(d.price ?? "");
+              setCurrency(d.currency ?? "USD");
+              setCountry(d.country ?? "");
+              setCity(d.city ?? "");
+              setAddress(d.address ?? "");
+              setListingType(d.listingType ?? "sale");
+              setRentalPeriod(d.rentalPeriod ?? "month");
+              setImages(d.images ?? []);
+              draftLoaded.current = true;
+            },
+          },
+        ],
+      );
+    })();
+  }, []);
+
+  // Auto-save draft on changes.
+  useEffect(() => {
+    if (!draftLoaded.current) return;
+    saveDraft({
+      step,
+      category,
+      title,
+      description,
+      price,
+      currency,
+      country,
+      city,
+      address,
+      listingType,
+      rentalPeriod,
+      images,
+    });
+  }, [step, category, title, description, price, currency, country, city, address, listingType, rentalPeriod, images]);
+
+  const handleAiWrite = async () => {
+    if (!category) {
+      Alert.alert("Pick a category first");
+      return;
+    }
+    setAiBusy(true);
+    try {
+      const result = await api.post<{ title?: string; description?: string }>("/api/ai/listing-writer", {
+        category,
+        country,
+        title,
+        notes: description,
+      });
+      if (result.title && !title) setTitle(result.title);
+      if (result.description) setDescription(result.description);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "AI is not available right now";
+      Alert.alert("AI assistant", msg);
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
   const handleAddImage = async () => {
-    if (images.length >= MAX_IMAGES) {
+    const remaining = MAX_IMAGES - images.length;
+    if (remaining <= 0) {
       Alert.alert("Maximum reached", `You can upload up to ${MAX_IMAGES} images`);
       return;
     }
     try {
-      const picked = await pickImage();
-      if (!picked) return;
+      const picked = await pickImages(remaining);
+      if (picked.length === 0) return;
       setUploadingImage(true);
-      const result = await uploadFile(picked);
-      setImages((prev) => [...prev, result.url]);
-    } catch (e: any) {
-      Alert.alert("Upload failed", e.message || "Could not upload image");
+      const results = await uploadMany(picked);
+      const blocked = results.filter((r) => r.moderation && !r.moderation.safe);
+      if (blocked.length) {
+        Alert.alert(
+          "Some images were rejected",
+          `${blocked.length} image(s) flagged by moderation: ${blocked
+            .flatMap((b) => b.moderation?.reasons ?? [])
+            .join(", ")}`,
+        );
+      }
+      const good = results.filter((r) => !r.moderation || r.moderation.safe);
+      setImages((prev) => [...prev, ...good.map((r) => r.url)].slice(0, MAX_IMAGES));
+      setImageMeta((prev) => {
+        const next = { ...prev };
+        good.forEach((r) => {
+          next[r.url] = { pHash: r.pHash ?? null };
+        });
+        return next;
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Could not upload images";
+      Alert.alert("Upload failed", msg);
     } finally {
       setUploadingImage(false);
     }
@@ -142,7 +251,10 @@ export default function PostScreen() {
     try {
       const body: Record<string, unknown> = {
         title, description, price: parseFloat(price), currency, category,
-        country, city, address, images,
+        country, city, address,
+        images: images.map((url) =>
+          imageMeta[url]?.pHash ? { url, pHash: imageMeta[url]!.pHash! } : url,
+        ),
         listingType: canHaveRental ? listingType : "sale",
       };
       if (canHaveRental && listingType === "rent") {
@@ -176,11 +288,12 @@ export default function PostScreen() {
       }
       await api.post("/api/listings", body);
       queryClient.invalidateQueries({ queryKey: ["listings"] });
+      await clearDraft();
       Alert.alert("Posted!", "Your listing is now live on ZAWADI", [
         { text: "View Home", onPress: () => router.push("/(app)") },
       ]);
       setStep(1); setCategory(null); setTitle(""); setDescription(""); setPrice(""); setCountry(""); setCity("");
-      setImages([]); setListingType("sale"); setRentalPeriod("month");
+      setAddress(""); setImages([]); setListingType("sale"); setRentalPeriod("month");
     } catch (e: any) {
       Alert.alert("Error", e.message || "Failed to post listing");
     } finally {
@@ -332,6 +445,27 @@ export default function PostScreen() {
                 </View>
               ) : null}
 
+              <Pressable
+                testID="ai-write-button"
+                onPress={handleAiWrite}
+                disabled={aiBusy}
+                style={{
+                  flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+                  backgroundColor: "#1E1E0A", borderWidth: 1, borderColor: "#D4A84366",
+                  borderRadius: 12, paddingVertical: 12, marginBottom: 16,
+                }}
+              >
+                {aiBusy ? (
+                  <ActivityIndicator color="#D4A843" size="small" />
+                ) : (
+                  <>
+                    <Sparkles size={14} color="#D4A843" strokeWidth={2.5} />
+                    <Text style={{ color: "#D4A843", fontSize: 13, fontWeight: "800" }}>
+                      Write with AI {title || description ? "(polish my draft)" : ""}
+                    </Text>
+                  </>
+                )}
+              </Pressable>
               <InputField label="Title *" value={title} onChange={setTitle} placeholder="e.g. 3 Bedroom House in Nairobi" />
               <InputField label="Description *" value={description} onChange={setDescription} placeholder="Describe your listing in detail..." multiline />
 
@@ -400,13 +534,21 @@ export default function PostScreen() {
                 {showCountryPicker ? (
                   <View style={{
                     backgroundColor: "#16161E", borderRadius: 12, marginTop: 4,
-                    borderWidth: 1, borderColor: "#2A2A3A", maxHeight: 200, overflow: "hidden",
+                    borderWidth: 1, borderColor: "#2A2A3A", overflow: "hidden",
                   }}>
-                    <ScrollView nestedScrollEnabled>
-                      {AFRICAN_COUNTRIES.map((c) => (
+                    <TextInput
+                      value={countryQuery}
+                      onChangeText={setCountryQuery}
+                      placeholder="Search countries..."
+                      placeholderTextColor="#3A3A4A"
+                      style={{ color: "#FFFFFF", fontSize: 14, padding: 14, borderBottomWidth: 1, borderBottomColor: "#2A2A3A" }}
+                      autoCapitalize="none"
+                    />
+                    <ScrollView nestedScrollEnabled style={{ maxHeight: 200 }}>
+                      {AFRICAN_COUNTRIES.filter((c) => !countryQuery || c.toLowerCase().includes(countryQuery.toLowerCase())).map((c) => (
                         <Pressable
                           key={c}
-                          onPress={() => { setCountry(c); setShowCountryPicker(false); }}
+                          onPress={() => { setCountry(c); setShowCountryPicker(false); setCountryQuery(""); }}
                           style={{
                             padding: 14, borderBottomWidth: 1, borderBottomColor: "#1A1A2A",
                             backgroundColor: country === c ? "#1E1E2A" : "transparent",
