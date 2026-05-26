@@ -203,6 +203,20 @@ app.post("/api/video/start", async (c) => {
   return c.json({ data: { joinUrl, room, token: tok.token, url: tok.url } });
 });
 
+// GET /api/chain - on-chain integration status + explorer base for the mobile UI.
+app.get("/api/chain", async (c) => {
+  const { isChainEnabled } = await import("./lib/chain");
+  return c.json({
+    data: {
+      enabled: isChainEnabled(),
+      name: env.CHAIN_NAME,
+      chainId: env.CHAIN_ID,
+      factory: env.CHAIN_ESCROW_FACTORY || null,
+      explorer: env.CHAIN_EXPLORER_BASE_URL || null,
+    },
+  });
+});
+
 // GET /api/flags - per-user feature flag map
 app.get("/api/flags", async (c) => {
   const user = c.get("user");

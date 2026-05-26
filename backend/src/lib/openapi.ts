@@ -128,5 +128,41 @@ export const openapi = {
     "/api/admin/listings/{id}": { delete: { tags: ["admin"], security: [{ cookieAuth: [] }] } },
 
     "/api/upload": { post: { tags: ["upload"], summary: "Image upload (multipart)", security: [{ cookieAuth: [] }] } },
+
+    "/api/chain": { get: { tags: ["chain"], summary: "On-chain integration status (factory address + explorer)" } },
+
+    "/api/wallet": { get: { tags: ["wallet"], security: [{ cookieAuth: [] }] } },
+    "/api/wallet/topup": { post: { tags: ["wallet"], security: [{ cookieAuth: [] }] } },
+
+    "/api/kyc": {
+      get: { tags: ["kyc"], security: [{ cookieAuth: [] }] },
+      post: { tags: ["kyc"], summary: "Submit KYC documents", security: [{ cookieAuth: [] }] },
+    },
+
+    "/api/trades": {
+      get: { tags: ["trades"], security: [{ cookieAuth: [] }] },
+      post: { tags: ["trades"], summary: "Start a trade on a listing", security: [{ cookieAuth: [] }] },
+    },
+    "/api/trades/{id}": { get: { tags: ["trades"], security: [{ cookieAuth: [] }] } },
+    "/api/trades/{id}/action": {
+      post: {
+        tags: ["trades"],
+        summary: "State machine: fund / deliver / confirm / cancel / refund / dispute",
+        security: [{ cookieAuth: [] }],
+      },
+    },
+
+    "/api/contracts": { post: { tags: ["contracts"], summary: "Draft a contract attached to a trade", security: [{ cookieAuth: [] }] } },
+    "/api/contracts/{id}": { get: { tags: ["contracts"], security: [{ cookieAuth: [] }] } },
+    "/api/contracts/{id}/sign": { post: { tags: ["contracts"], summary: "Sign as buyer or seller (chain-anchored if enabled)", security: [{ cookieAuth: [] }] } },
+
+    "/api/bids/listing/{listingId}": {
+      get: { tags: ["bids"], summary: "List bids" },
+      post: { tags: ["bids"], summary: "Place a bid", security: [{ cookieAuth: [] }] },
+    },
+    "/api/bids/listing/{listingId}/auction": {
+      post: { tags: ["bids"], summary: "Owner configures the auction", security: [{ cookieAuth: [] }] },
+    },
+    "/api/bids/{id}/withdraw": { post: { tags: ["bids"], security: [{ cookieAuth: [] }] } },
   },
 } as const;

@@ -3,6 +3,7 @@ import { zValidator } from "@hono/zod-validator";
 import { prisma } from "../prisma";
 import { auth } from "../auth";
 import { contractCreateSchema, contractSignSchema } from "../lib/schemas";
+import * as chain from "../lib/chain";
 
 type Variables = {
   user: typeof auth.$Infer.Session.user | null;
@@ -95,6 +96,27 @@ router.post("/:id/sign", zValidator("json", contractSignSchema), async (c) => {
   data.status = nextStatus;
 
   const updated = await prisma.contract.update({ where: { id }, data });
+
+  // Anchor on-chain (best effort).
+  if (chain.isChainEnabled()) {
+    const trade = await prisma.trade.findFirst({ where: { contractId: id }, select: { id: true } });
+    if (trade) {
+      const fn = user.id === contract.buyerId ? chain.signBuyer : chain.signSeller;
+      const tradeId = trade.id;
+      fn(tradeId)
+        .then(async (hash) => {
+          if (!hash) return;
+          await prisma.contract.update({
+            where: { id },
+            data: user.id === contract.buyerId
+              ? { buyerSignTxHash: hash }
+              : { sellerSignTxHash: hash },
+          });
+        })
+        .catch(() => {});
+    }
+  }
+
   return c.json({ data: updated });
 });
 

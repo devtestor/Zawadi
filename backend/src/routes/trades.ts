@@ -8,6 +8,7 @@ import { getOrCreateWallet, postEntry, feeAmount } from "../lib/wallet";
 import { convertFromUSD } from "../lib/fx";
 import { sendPushToUser } from "../lib/push";
 import { logger } from "../lib/logger";
+import * as chain from "../lib/chain";
 
 type Variables = {
   user: typeof auth.$Infer.Session.user | null;
@@ -22,6 +23,28 @@ async function recordEvent(tradeId: string, kind: string, actorId: string | null
   await prisma.tradeEvent.create({
     data: { tradeId, kind, actorId, note: note ?? null },
   });
+}
+
+// Fire-and-forget chain anchor for a transition. Updates the last matching
+// TradeEvent row with the resulting tx hash. Never throws.
+function anchor(tradeId: string, kind: string, fn: () => Promise<`0x${string}` | null>) {
+  if (!chain.isChainEnabled()) return;
+  fn()
+    .then(async (hash) => {
+      if (!hash) return;
+      // Update the most recent event with the matching kind.
+      const ev = await prisma.tradeEvent.findFirst({
+        where: { tradeId, kind },
+        orderBy: { createdAt: "desc" },
+      });
+      if (ev) {
+        await prisma.tradeEvent.update({
+          where: { id: ev.id },
+          data: { chainTxHash: hash, chainName: process.env.CHAIN_NAME ?? null },
+        });
+      }
+    })
+    .catch(() => {});
 }
 
 // GET /api/trades - list current user's trades (buyer + seller)
@@ -126,6 +149,34 @@ router.post("/", zValidator("json", tradeStartSchema), async (c) => {
     kind: "chat",
   }).catch(() => {});
 
+  // Best-effort on-chain anchor: record the agreement creation.
+  if (chain.isChainEnabled()) {
+    chain
+      .createAgreement({
+        tradeId: trade.id,
+        buyerUserId: trade.buyerId,
+        sellerUserId: trade.sellerId,
+        amount: trade.amount,
+        currency: trade.currency,
+      })
+      .then(async (hash) => {
+        if (!hash) return;
+        await prisma.trade.update({
+          where: { id: trade.id },
+          data: {
+            chainAddress: process.env.CHAIN_ESCROW_FACTORY ?? null,
+            chainName: process.env.CHAIN_NAME ?? null,
+            chainTradeId: chain.tradeIdToBytes32(trade.id),
+          },
+        });
+        await prisma.tradeEvent.updateMany({
+          where: { tradeId: trade.id, kind: "initiated" },
+          data: { chainTxHash: hash, chainName: process.env.CHAIN_NAME ?? null },
+        });
+      })
+      .catch(() => {});
+  }
+
   return c.json({ data: trade }, 201);
 });
 
@@ -187,6 +238,7 @@ router.post("/:id/action", zValidator("json", tradeActionSchema), async (c) => {
       data: { type: "trade", tradeId: trade.id },
       kind: "chat",
     }).catch(() => {});
+    anchor(trade.id, "in_escrow", () => chain.markFunded(trade.id));
     return c.json({ data: { ok: true } });
   }
 
@@ -209,6 +261,7 @@ router.post("/:id/action", zValidator("json", tradeActionSchema), async (c) => {
       data: { type: "trade", tradeId: trade.id },
       kind: "chat",
     }).catch(() => {});
+    anchor(trade.id, "delivered", () => chain.markDelivered(trade.id));
     return c.json({ data: { ok: true } });
   }
 
@@ -287,6 +340,7 @@ router.post("/:id/action", zValidator("json", tradeActionSchema), async (c) => {
       data: { type: "trade", tradeId: trade.id },
       kind: "chat",
     }).catch(() => {});
+    anchor(trade.id, "completed", () => chain.markCompleted(trade.id));
     return c.json({ data: { ok: true } });
   }
 
@@ -302,6 +356,7 @@ router.post("/:id/action", zValidator("json", tradeActionSchema), async (c) => {
       }),
       prisma.tradeEvent.create({ data: { tradeId: trade.id, kind: "cancelled", actorId: user.id } }),
     ]);
+    anchor(trade.id, "cancelled", () => chain.markCancelled(trade.id));
     return c.json({ data: { ok: true } });
   }
 
@@ -336,6 +391,7 @@ router.post("/:id/action", zValidator("json", tradeActionSchema), async (c) => {
       data: { type: "trade", tradeId: trade.id },
       kind: "chat",
     }).catch(() => {});
+    anchor(trade.id, "refunded", () => chain.markRefunded(trade.id));
     return c.json({ data: { ok: true } });
   }
 
@@ -349,6 +405,7 @@ router.post("/:id/action", zValidator("json", tradeActionSchema), async (c) => {
       prisma.tradeEvent.create({ data: { tradeId: trade.id, kind: "disputed", actorId: user.id } }),
     ]);
     logger.warn("trade disputed", { tradeId: trade.id, actorId: user.id });
+    anchor(trade.id, "disputed", () => chain.markDisputed(trade.id));
     return c.json({ data: { ok: true } });
   }
 
