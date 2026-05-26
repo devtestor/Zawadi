@@ -67,6 +67,20 @@ const envSchema = z.object({
   LIVEKIT_API_SECRET: z.string().optional().default(""),
   LIVEKIT_URL: z.string().optional().default(""),
 
+  // On-chain escrow anchoring (EVM). When disabled or unconfigured the
+  // backend skips chain writes — trades still work fully off-chain.
+  CHAIN_ENABLED: z
+    .union([z.literal("true"), z.literal("false"), z.boolean()])
+    .optional()
+    .default(false)
+    .transform((v) => v === true || v === "true"),
+  CHAIN_NAME: z.string().optional().default("polygon-amoy"),
+  CHAIN_ID: z.coerce.number().int().positive().optional().default(80002),
+  CHAIN_RPC_URL: z.string().optional().default(""),
+  CHAIN_PRIVATE_KEY: z.string().optional().default(""),
+  CHAIN_ESCROW_FACTORY: z.string().optional().default(""),
+  CHAIN_EXPLORER_BASE_URL: z.string().optional().default("https://amoy.polygonscan.com"),
+
   // Marketplace policy
   HIGH_VALUE_USD: z.coerce.number().optional().default(500_000),
   // Platform fee on each escrow release, in basis points (250 = 2.5%).

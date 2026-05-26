@@ -526,6 +526,10 @@ model Trade {
   contractId  String?   @unique
   // If this trade originated from an auction bid
   bidId       String?   @unique
+  // Chain anchor info for the trade lifecycle
+  chainAddress String?  // factory address used
+  chainName    String?
+  chainTradeId String?  // bytes32 hex used as the on-chain key
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   listing     Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
@@ -544,13 +548,16 @@ model Trade {
 
 // Append-only event log per trade — drives the timeline UI.
 model TradeEvent {
-  id        String   @id @default(cuid())
-  tradeId   String
-  kind      String   // matches Trade.status transitions
-  actorId   String?  // user who triggered the event (null = system)
-  note      String?
-  createdAt DateTime @default(now())
-  trade     Trade    @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+  id          String   @id @default(cuid())
+  tradeId     String
+  kind        String   // matches Trade.status transitions
+  actorId     String?  // user who triggered the event (null = system)
+  note        String?
+  // Optional on-chain tx that anchored this event
+  chainTxHash String?
+  chainName   String?
+  createdAt   DateTime @default(now())
+  trade       Trade    @relation(fields: [tradeId], references: [id], onDelete: Cascade)
 
   @@index([tradeId, createdAt])
 }
@@ -575,6 +582,10 @@ model Contract {
   buyerSignedAt  DateTime?
   sellerSignedAt DateTime?
   executedAt     DateTime?
+  // Chain anchors per signature
+  buyerSignTxHash  String?
+  sellerSignTxHash String?
+  createTxHash     String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   trade          Trade?
