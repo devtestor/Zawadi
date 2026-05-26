@@ -191,6 +191,32 @@ POST   /api/admin/users/:id/ban  /  /unban
 DELETE /api/admin/listings/:id
 ```
 
+## On-chain escrow audit trail
+
+Zawadi can anchor every Trade transition to a public EVM chain (Polygon by
+default, but the contract is chain-agnostic). When enabled, each agreement
+gets created, signed, funded, delivered, completed, refunded, or cancelled
+on chain in addition to the wallet ledger — giving you an immutable public
+record that disputes and auditors can verify.
+
+The contract is custodial-relayer style: users don't hold wallets or pay
+gas. The backend signs on their behalf after verifying the action via the
+authenticated API. Buyer/seller appear as pseudonymous addresses derived
+from their user id.
+
+**One-time setup**
+
+1. Deploy `backend/contracts/src/ZawadiEscrowFactory.sol` to your chain.
+   The full walkthrough (Foundry + Remix paths) is in
+   `backend/contracts/README.md`.
+2. Drop the deployed address into `backend/.env` as `CHAIN_ESCROW_FACTORY`,
+   set `CHAIN_ENABLED=true`, and restart.
+3. From the mobile app, every Trade and Contract signature gets a "View on
+   chain" link to the explorer.
+
+Disable any time with `CHAIN_ENABLED=false` — the off-chain wallet ledger
+remains the source of truth.
+
 ## Notes
 
 - The local SQLite db (`prisma/prisma/dev.db`) and all `.env*` files are gitignored. Never commit secrets.

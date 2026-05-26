@@ -12,10 +12,12 @@ import {
 import { useLocalSearchParams, router } from "expo-router";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { ArrowLeft, FileSignature, Lock, Truck, ShieldCheck, AlertTriangle } from "lucide-react-native";
+import { ArrowLeft, FileSignature, Lock, Truck, ShieldCheck, AlertTriangle, ExternalLink, Anchor } from "lucide-react-native";
+import { Linking } from "react-native";
 import { api } from "@/lib/api/api";
 import { useSession } from "@/lib/auth/use-session";
 import { Trade, formatMoney } from "@/lib/types";
+import { useChainConfig, explorerTx } from "@/lib/chain";
 
 export default function TradeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -28,6 +30,7 @@ export default function TradeDetailScreen() {
     queryKey: ["trade", id],
     queryFn: () => api.get<Trade>(`/api/trades/${id}`),
   });
+  const { data: chainCfg } = useChainConfig();
 
   const action = useMutation({
     mutationFn: (act: "fund" | "deliver" | "confirm" | "cancel" | "refund" | "dispute") =>
@@ -239,20 +242,43 @@ export default function TradeDetailScreen() {
           ) : null}
         </View>
 
+        {/* On-chain badge */}
+        {chainCfg?.enabled ? (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#0A1F14", borderWidth: 1, borderColor: "#1A6B4A66", borderRadius: 12, padding: 12 }}>
+            <Anchor size={14} color="#1A6B4A" />
+            <Text style={{ color: "#1A6B4A", fontSize: 12, fontWeight: "800" }}>
+              Anchored on {chainCfg.name}
+            </Text>
+          </View>
+        ) : null}
+
         {/* Timeline */}
         <View style={{ backgroundColor: "#12121A", borderRadius: 16, borderWidth: 1, borderColor: "#1E1E2A", padding: 16 }}>
           <Text style={{ color: "#FFFFFF", fontWeight: "800", marginBottom: 12 }}>Timeline</Text>
-          {(trade.events ?? []).map((e) => (
-            <View key={e.id} style={{ flexDirection: "row", gap: 10, paddingVertical: 6 }}>
-              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#D4A843", marginTop: 6 }} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: "#FFFFFF", fontWeight: "700", textTransform: "capitalize" }}>
-                  {e.kind.replace(/_/g, " ")}
-                </Text>
-                <Text style={{ color: "#666680", fontSize: 11 }}>{new Date(e.createdAt).toLocaleString()}</Text>
+          {(trade.events ?? []).map((e) => {
+            const explorer = explorerTx(chainCfg?.explorer, e.chainTxHash);
+            return (
+              <View key={e.id} style={{ flexDirection: "row", gap: 10, paddingVertical: 6 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: e.chainTxHash ? "#1A6B4A" : "#D4A843", marginTop: 6 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: "#FFFFFF", fontWeight: "700", textTransform: "capitalize" }}>
+                    {e.kind.replace(/_/g, " ")}
+                  </Text>
+                  <Text style={{ color: "#666680", fontSize: 11 }}>{new Date(e.createdAt).toLocaleString()}</Text>
+                  {explorer ? (
+                    <Pressable
+                      testID={`event-explorer-${e.id}`}
+                      onPress={() => Linking.openURL(explorer)}
+                      style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 }}
+                    >
+                      <ExternalLink size={11} color="#1A6B4A" />
+                      <Text style={{ color: "#1A6B4A", fontSize: 11, fontWeight: "700" }}>View on chain</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
               </View>
-            </View>
-          ))}
+            );
+          })}
         </View>
       </ScrollView>
     </View>

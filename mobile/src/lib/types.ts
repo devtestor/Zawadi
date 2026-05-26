@@ -88,6 +88,9 @@ export interface ContractRecord {
   sellerSignedAt: string | null;
   chain?: string | null;
   chainTxHash?: string | null;
+  buyerSignTxHash?: string | null;
+  sellerSignTxHash?: string | null;
+  createTxHash?: string | null;
 }
 
 export interface TradeEventRecord {
@@ -95,6 +98,8 @@ export interface TradeEventRecord {
   kind: string;
   actorId?: string | null;
   note?: string | null;
+  chainTxHash?: string | null;
+  chainName?: string | null;
   createdAt: string;
 }
 
