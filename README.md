@@ -1,92 +1,198 @@
-# ZAWADI - Africa's Premier Marketplace
+# ZAWADI — Africa's Marketplace
 
-A full-stack mobile app for buying and selling properties, land, cars, and mining sites across all 54 African countries.
+Full-stack mobile marketplace for Property, Land, Cars, Mining Sites, and Machinery across 54 African countries. "Zawadi" is Swahili for "gift / treasure."
 
-## App Overview
+## Stack
 
-**ZAWADI** (Swahili for "treasure/gift") is a premium marketplace connecting buyers and sellers across Africa with four main categories:
-- 🏠 **Property** - Houses, apartments, villas, commercial spaces
-- 🗺️ **Land** - Plots, farms, agricultural land, estates
-- 🚗 **Cars** - Vehicles of all types and conditions
-- ⛏️ **Mining Sites** - Gold, diamond, copper, and mineral extraction sites
-- 
+**Mobile** (`mobile/`)
+- Expo SDK 53 + React Native 0.79, Expo Router
+- React Query (server state) + Zustand (local)
+- NativeWind / Tailwind 3, react-native-reanimated, FlashList
+- Better Auth (email OTP) via custom client
+- Expo Notifications for chat push
 
-## Tech Stack
+**Backend** (`backend/`)
+- Bun + Hono + Zod-validated routes
+- Prisma ORM, SQLite (dev) → Postgres (production)
+- Better Auth with email OTP + rate limits + CSRF
+- Pesapal integration for boost payments
+- Expo Push API for chat notifications
 
-### Mobile (`mobile/`)
-- Expo SDK 53 + React Native 0.79
-- Expo Router for file-based navigation
-- React Query for server state management
-- NativeWind (Tailwind CSS) for styling
-- React Native Reanimated for animations
-- Custom auth client (direct API calls to Better Auth endpoints)
+## Features
 
-### Backend (`backend/`)
-- Hono framework on Bun runtime
-- Prisma ORM with SQLite database
-- Better Auth with Email OTP authentication
-- RESTful API with typed responses
+- Listings (Property / Land / Car / Mining / Machinery) with multi-currency
+- Sale & rent listings (with rental periods)
+- Image upload (up to 5 per listing) with tap-to-zoom gallery + map of the listing location
+- Cursor-paginated browse + search + country filter (with search-as-you-type)
+- Favorites (server-authoritative)
+- In-app chat between buyers and sellers, with Expo push notifications
+- Seller profiles with ⭐ reviews (auto-verifies a seller at 3+ reviews avg ≥4)
+- Listing reports + admin moderation endpoints (`/api/admin/*`, role-gated)
+- Boost listings via Pesapal (Mobile Money + cards) — Basic / Standard / Premium tiers
+- Edit / mark sold / reactivate / delete from listing detail (owners only)
+- Share listing via system share sheet
 
-## Architecture
+## Project layout
 
-### Authentication Flow
-1. User enters email on sign-in screen
-2. OTP sent via zawadi SMTP service
-3. User verifies 6-digit code
-4. Session stored securely via cookie management
-5. Stack.Protected guards route access
-
-### App Structure
 ```
-mobile/src/app/
-├── _layout.tsx          - Root layout with auth guards (Stack.Protected)
-├── sign-in.tsx          - Email input screen (public)
-├── verify-otp.tsx       - OTP verification screen (public)
-├── listing/[id].tsx     - Listing detail screen (protected)
-└── (app)/
-    ├── _layout.tsx      - Tab navigator
-    ├── index.tsx        - Home: browse by category + featured
-    ├── search.tsx       - Search with filters (category, country)
-    ├── post.tsx         - Create new listing (2-step form)
-    ├── saved.tsx        - Saved/favorited listings
-    └── profile.tsx      - User profile + my listings
+backend/
+├── prisma/
+│   ├── schema.prisma              # dev (SQLite)
+│   └── schema.postgresql.prisma   # production (Postgres) — used by Docker
+├── src/
+│   ├── auth.ts                    # Better Auth + email OTP + rate limits
+│   ├── env.ts                     # Zod-validated env
+│   ├── index.ts                   # Hono app, CORS, mounts routers
+│   ├── lib/
+│   │   ├── schemas.ts             # shared Zod schemas
+│   │   ├── email.ts               # Resend transactional email
+│   │   ├── storage.ts             # S3-compatible uploads (SigV4)
+│   │   ├── sms.ts                 # Twilio / WhatsApp Cloud (optional)
+│   │   ├── fx.ts                  # Live USD->local FX
+│   │   ├── push.ts                # Expo push helper
+│   │   ├── logger.ts              # Structured logger
+│   │   └── sentry.ts              # Error capture shim
+│   └── routes/
+│       ├── listings.ts            # browse / detail / create / update / delete + cursor pagination
+│       ├── favorites.ts
+│       ├── users.ts               # GET/PUT /api/me + /:id/listings
+│       ├── messages.ts            # conversations + messages + read state
+│       ├── reviews.ts
+│       ├── reports.ts             # user-facing report endpoint
+│       ├── admin.ts               # /api/admin/* (role-gated)
+│       ├── push-tokens.ts
+│       └── boost.ts               # Pesapal checkout + IPN
+├── Dockerfile
+└── .dockerignore
+
+mobile/src/
+├── app/                            # Expo Router file-based routes
+│   ├── _layout.tsx                 # Root layout, push setup, deep-link to chat
+│   ├── (app)/                      # Tabbed area
+│   │   ├── _layout.tsx             # Tabs: Home / Search / Post / Saved / Profile
+│   │   ├── index.tsx               # Home: featured + paginated listings (FlashList)
+│   │   ├── search.tsx              # Search with cursor pagination
+│   │   ├── post.tsx                # Create listing (2-step wizard)
+│   │   ├── saved.tsx
+│   │   ├── profile.tsx
+│   │   └── messages.tsx            # Conversation list (not a tab)
+│   ├── chat/[id].tsx               # Chat thread
+│   ├── listing/[id].tsx            # Listing detail (gallery, map, share, owner actions, report)
+│   ├── listing/edit/[id].tsx       # Edit modal
+│   ├── boost/[id].tsx              # Boost checkout
+│   ├── seller/[id].tsx             # Seller profile + reviews
+│   ├── sign-in.tsx
+│   └── verify-otp.tsx
+├── components/
+│   ├── ListingCard.tsx
+│   └── ListingSkeleton.tsx
+└── lib/
+    ├── api/api.ts
+    ├── auth/{auth-client,use-session}.ts
+    ├── push.ts
+    ├── types.ts
+    └── upload.ts
+
+docker-compose.yml                  # Postgres + backend
+.github/workflows/typecheck.yml     # Backend / mobile typecheck + Docker build
 ```
 
-### Backend Routes
-- `POST /api/auth/email-otp/send-verification-otp` - Send OTP
-- `POST /api/auth/sign-in/email-otp` - Sign in
-- `POST /api/auth/sign-out` - Sign out
-- `GET /api/auth/get-session` - Get session
-- `GET /api/listings` - Browse listings (with filters)
-- `GET /api/listings/featured` - Featured listings
-- `GET /api/listings/:id` - Single listing
-- `POST /api/listings` - Create listing
-- `PUT /api/listings/:id` - Update listing
-- `DELETE /api/listings/:id` - Delete listing
-- `GET /api/favorites` - User's saved listings
-- `POST /api/favorites/:listingId` - Toggle favorite
-- `GET /api/me` - User profile
-- `PUT /api/me` - Update profile
-- `GET /api/me/my/listings` - Current user's listings
+## Local development
 
-## Design System
-- Background: `#0A0A0F` (deep black)
-- Primary accent: `#D4A843` (gold)
-- Secondary: `#E8890C` (amber)
-- Property: `#D4A843` (gold)
-- Land: `#1A6B4A` (emerald green)
-- Cars: `#E8890C` (amber)
-- Mining: `#C17B50` (terracotta)
+```bash
+# Backend
+cd backend
+cp .env.example .env                # then fill in BETTER_AUTH_SECRET + Pesapal keys
+bun install
+bunx prisma generate
+bunx prisma db push                 # apply schema to SQLite dev.db
+bun run dev                         # http://localhost:3000
 
-## Database Schema
-- **User** - Auth users with profile data
-- **Session/Account/Verification** - Better Auth tables
-- **Listing** - All marketplace listings with category-specific fields
-- **ListingImage** - Multiple images per listing
-- **Favorite** - User saved listings
+# Mobile
+cd mobile
+cp .env.example .env                # set EXPO_PUBLIC_BACKEND_URL
+bun install
+bun run start                       # then 'i' for iOS / 'a' for Android
+```
 
-## Countries Supported
-All 54 African countries including Nigeria, South Africa, Kenya, Ghana, Egypt, Morocco, Tanzania, and more.
+## Production deploy with Docker
 
-## Currencies Supported
-USD, EUR, GBP, ZAR (South African Rand), NGN (Nigerian Naira), KES (Kenyan Shilling), GHS (Ghanaian Cedi), EGP (Egyptian Pound), MAD (Moroccan Dirham), TZS (Tanzanian Shilling)
+```bash
+# At the repo root
+cp backend/.env.example .env        # set BETTER_AUTH_SECRET + Pesapal keys + BACKEND_URL
+docker compose up -d --build
+```
+
+The compose file provisions a Postgres 16 database, runs Prisma migrations on
+boot (or `prisma db push` if no migration history yet), and exposes the API
+on port 3000. The backend image swaps in `schema.postgresql.prisma` during the
+build so Prisma generates a Postgres-aware client.
+
+To create a one-off admin user, after the stack is up:
+
+```bash
+docker compose exec db psql -U zawadi -d zawadi -c \
+  "UPDATE \"User\" SET role = 'admin' WHERE email = 'you@example.com';"
+```
+
+## Required env (backend)
+
+| Variable | Required | Notes |
+|---|---|---|
+| `BETTER_AUTH_SECRET` | yes | `openssl rand -base64 32` |
+| `DATABASE_URL` | yes | sqlite file path (dev) or postgres URL |
+| `DATABASE_PROVIDER` | recommended | `sqlite` (default) or `postgresql` |
+| `BACKEND_URL` | yes | Public URL of the API (used in cookies + Pesapal callbacks) |
+| `PESAPAL_CONSUMER_KEY` / `PESAPAL_CONSUMER_SECRET` | for boost | from Pesapal dashboard |
+| `PESAPAL_BASE_URL` | for boost | `https://cybqa.pesapal.com/pesapalv3` (sandbox) or `https://pay.pesapal.com/v3` |
+| `PESAPAL_CURRENCY` | for boost | RWF / KES / UGX / TZS / USD |
+| `PESAPAL_IPN_ID` | optional | leave blank to auto-register at boot |
+
+## API surface (high-level)
+
+```
+POST   /api/auth/email-otp/send-verification-otp   # rate-limited 3/min
+POST   /api/auth/sign-in/email-otp                  # rate-limited 10/min
+GET    /api/auth/get-session
+POST   /api/auth/sign-out
+
+GET    /api/listings?category&country&search&cursor&limit
+GET    /api/listings/featured
+GET    /api/listings/:id
+POST   /api/listings
+PUT    /api/listings/:id
+DELETE /api/listings/:id
+
+POST   /api/upload                                  # multipart file
+GET    /api/me + PUT /api/me + GET /api/me/my/listings + GET /api/me/:id/listings
+
+GET    /api/favorites + POST /api/favorites/:listingId
+
+GET    /api/messages                                # threads list
+POST   /api/messages/start                          # find/create conversation
+GET    /api/messages/:id
+POST   /api/messages/:id
+POST   /api/messages/:id/read
+
+GET    /api/reviews/user/:userId
+POST   /api/reviews/user/:userId
+DELETE /api/reviews/:id
+
+POST   /api/reports                                 # file a report
+
+POST   /api/push-tokens + DELETE /api/push-tokens/:token
+
+POST   /api/boost/:listingId                        # start Pesapal checkout
+GET    /api/boost/return  /  GET /api/boost/ipn
+
+GET    /api/admin/reports                           # role: admin
+POST   /api/admin/reports/:id/resolve
+POST   /api/admin/users/:id/ban  /  /unban
+DELETE /api/admin/listings/:id
+```
+
+## Notes
+
+- The local SQLite db (`prisma/prisma/dev.db`) and all `.env*` files are gitignored. Never commit secrets.
+- The mobile app uses cookies stored in `expo-secure-store` for session auth.
+- Push notifications only work on physical devices, not simulators.
