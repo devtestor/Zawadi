@@ -1,7 +1,11 @@
 import { Hono } from "hono";
+import { zValidator } from "@hono/zod-validator";
 import { prisma } from "../prisma";
 import { auth } from "../auth";
 import { env } from "../env";
+import { boostStartSchema } from "../lib/schemas";
+import { convertFromUSD } from "../lib/fx";
+import { logger } from "../lib/logger";
 
 type Variables = {
   user: typeof auth.$Infer.Session.user | null;
@@ -16,20 +20,8 @@ const BOOST_TIERS: Record<string, { days: number; amount: number; label: string 
   premium: { days: 30, amount: 30, label: "30-day boost" },
 };
 
-// USD → local rough conversion for display/charge. Pesapal supports RWF, KES,
-// UGX, TZS and USD natively. Update these numbers per deployment if needed.
-const USD_TO: Record<string, number> = {
-  USD: 1,
-  RWF: 1300,
-  KES: 130,
-  UGX: 3800,
-  TZS: 2500,
-};
-
-function convertUSD(amountUsd: number, currency: string): number {
-  const rate = USD_TO[currency] ?? 1;
-  return Math.round(amountUsd * rate);
-}
+// Pesapal supports RWF, KES, UGX, TZS, USD natively. Conversion is now
+// driven by lib/fx.ts (live rates, 1h cache, fallback table on failure).
 
 // ----- Pesapal helpers -----
 
@@ -84,12 +76,12 @@ async function pesapalIpnId(): Promise<string> {
 // ----- Routes -----
 
 // POST /api/boost/:listingId - start a Pesapal payment for a boost
-router.post("/:listingId", async (c) => {
+router.post("/:listingId", zValidator("json", boostStartSchema), async (c) => {
   const user = c.get("user");
   if (!user) return c.json({ error: { message: "Unauthorized" } }, 401);
 
   const { listingId } = c.req.param();
-  const body = (await c.req.json().catch(() => ({}))) as { tier?: string; phone?: string };
+  const body = c.req.valid("json");
   const tierKey = body.tier || "standard";
   const tier = BOOST_TIERS[tierKey];
   if (!tier) return c.json({ error: { message: "Invalid tier" } }, 400);
@@ -106,7 +98,7 @@ router.post("/:listingId", async (c) => {
   }
 
   const currency = env.PESAPAL_CURRENCY.toUpperCase();
-  const amount = convertUSD(tier.amount, currency);
+  const amount = await convertFromUSD(tier.amount, currency);
   const txRef = `boost_${listingId}_${Date.now()}`;
 
   await prisma.boostPayment.create({
@@ -207,23 +199,39 @@ router.get("/return", async (c) => {
   return c.html(renderReturn(verified ? "Boost activated!" : "Payment pending or not completed", verified));
 });
 
-// GET /api/boost/ipn - Pesapal server-to-server notification (IPN)
-// Pesapal sends GET params and expects a JSON ack back.
+// GET /api/boost/ipn - Pesapal server-to-server notification (IPN).
+// Pesapal v3 doesn't HMAC-sign IPNs; the trust model is that we always
+// re-verify with the authenticated GetTransactionStatus API call inside
+// verifyAndApply(). To make forgery harder we also:
+//   1. Require both OrderTrackingId and OrderMerchantReference to be present
+//   2. Confirm the reference matches a payment that *we* created
+//   3. Re-fetch status from Pesapal under our own Bearer token before crediting
 router.get("/ipn", async (c) => {
   const orderTrackingId = c.req.query("OrderTrackingId");
   const merchantRef = c.req.query("OrderMerchantReference");
   const notificationType = c.req.query("OrderNotificationType") || "IPNCHANGE";
 
-  if (!merchantRef) return c.json({ error: { message: "Missing reference" } }, 400);
+  if (!merchantRef || !orderTrackingId) {
+    logger.warn("pesapal ipn missing params", { merchantRef, orderTrackingId });
+    return c.json({ error: { message: "Missing reference" } }, 400);
+  }
 
   const payment = await prisma.boostPayment.findUnique({ where: { txRef: merchantRef } });
-  if (payment) {
-    await verifyAndApply(payment.id, orderTrackingId);
+  if (!payment) {
+    logger.warn("pesapal ipn unknown ref", { merchantRef });
+    // Still 200 so Pesapal stops retrying — there's nothing to do.
+    return c.json({
+      orderNotificationType: notificationType,
+      orderTrackingId,
+      orderMerchantReference: merchantRef,
+      status: 200,
+    });
   }
+  await verifyAndApply(payment.id, orderTrackingId);
 
   return c.json({
     orderNotificationType: notificationType,
-    orderTrackingId: orderTrackingId ?? "",
+    orderTrackingId,
     orderMerchantReference: merchantRef,
     status: 200,
   });
@@ -306,7 +314,50 @@ async function verifyAndApply(paymentId: string, orderTrackingId?: string | null
 
 function renderReturn(message: string, ok: boolean): string {
   const color = ok ? "#1A6B4A" : "#C0392B";
-  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>ZAWADI Boost</title></head><body style="margin:0;background:#0A0A0F;color:#fff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;"><div style="text-align:center;padding:32px;max-width:420px"><div style="font-size:48px;margin-bottom:16px">${ok ? "✅" : "⚠️"}</div><h1 style="color:${color};font-size:22px;margin:0 0 8px">${message}</h1><p style="color:#888;font-size:14px;margin:0 0 24px">You can close this window and return to the app.</p><a href="zawadi://listings" style="background:#D4A843;color:#0A0A0F;padding:12px 24px;border-radius:12px;text-decoration:none;font-weight:800;display:inline-block">Back to app</a></div></body></html>`;
+  const primaryScheme = (env.APP_SCHEMES.split(",")[0] || "zawadi://").trim().replace(/\/+$/, "");
+  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>ZAWADI Boost</title></head><body style="margin:0;background:#0A0A0F;color:#fff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;"><div style="text-align:center;padding:32px;max-width:420px"><div style="font-size:48px;margin-bottom:16px">${ok ? "✅" : "⚠️"}</div><h1 style="color:${color};font-size:22px;margin:0 0 8px">${message}</h1><p style="color:#888;font-size:14px;margin:0 0 24px">You can close this window and return to the app.</p><a href="${primaryScheme}//listings" style="background:#D4A843;color:#0A0A0F;padding:12px 24px;border-radius:12px;text-decoration:none;font-weight:800;display:inline-block">Back to app</a></div></body></html>`;
 }
+
+// POST /api/boost/:listingId/variants - register an alternate title for A/B testing.
+router.post("/:listingId/variants", async (c) => {
+  const user = c.get("user");
+  if (!user) return c.json({ error: { message: "Unauthorized" } }, 401);
+  const { listingId } = c.req.param();
+  const body = (await c.req.json().catch(() => ({}))) as { titleA?: string; titleB?: string };
+  if (!body.titleA || !body.titleB) return c.json({ error: { message: "titleA and titleB are required" } }, 400);
+
+  const listing = await prisma.listing.findUnique({ where: { id: listingId } });
+  if (!listing) return c.json({ error: { message: "Not found" } }, 404);
+  if (listing.userId !== user.id) return c.json({ error: { message: "Forbidden" } }, 403);
+
+  await prisma.boostVariant.deleteMany({ where: { listingId } });
+  await prisma.boostVariant.createMany({
+    data: [
+      { listingId, label: "A", title: body.titleA },
+      { listingId, label: "B", title: body.titleB },
+    ],
+  });
+  return c.json({ data: { ok: true } });
+});
+
+// GET /api/boost/:listingId/variants - report
+router.get("/:listingId/variants", async (c) => {
+  const user = c.get("user");
+  if (!user) return c.json({ error: { message: "Unauthorized" } }, 401);
+  const { listingId } = c.req.param();
+  const listing = await prisma.listing.findUnique({ where: { id: listingId }, select: { userId: true } });
+  if (!listing) return c.json({ error: { message: "Not found" } }, 404);
+  if (listing.userId !== user.id) return c.json({ error: { message: "Forbidden" } }, 403);
+
+  const variants = await prisma.boostVariant.findMany({ where: { listingId } });
+  return c.json({ data: variants });
+});
+
+// POST /api/boost/:variantId/click - record a click on the variant
+router.post("/variant/:variantId/click", async (c) => {
+  const { variantId } = c.req.param();
+  await prisma.boostVariant.update({ where: { id: variantId }, data: { clicks: { increment: 1 } } }).catch(() => {});
+  return c.json({ data: { ok: true } });
+});
 
 export { router as boostRouter, BOOST_TIERS };
