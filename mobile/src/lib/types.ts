@@ -4,6 +4,16 @@ export interface User {
   email: string;
   image?: string;
   phone?: string;
+  phoneVerified?: boolean;
+  verifiedAt?: string | null;
+  notifyChat?: boolean;
+  notifyMarketing?: boolean;
+  notifySavedSearches?: boolean;
+  preferredLang?: "en" | "sw" | "fr" | "ar";
+  role?: "user" | "business" | "admin";
+  businessName?: string | null;
+  businessType?: "agency" | "dealer" | "developer" | "other" | null;
+  referralCode?: string | null;
   createdAt: string;
   _count?: { listings: number; favorites: number };
 }
@@ -31,7 +41,16 @@ export interface Listing {
   latitude?: number;
   longitude?: number;
   images: ListingImage[];
-  user: { id: string; name: string; image?: string; phone?: string; email?: string };
+  user: {
+    id: string;
+    name: string;
+    image?: string;
+    phone?: string;
+    email?: string;
+    verifiedAt?: string | null;
+    role?: "user" | "business" | "admin";
+    businessName?: string | null;
+  };
   _count?: { favorites: number };
   createdAt: string;
   updatedAt: string;
@@ -66,6 +85,9 @@ export interface Listing {
   // Boost
   boosted?: boolean;
   boostedUntil?: string;
+  // Server-authoritative favorite state for the current user (omitted when anon)
+  isFavorited?: boolean;
+  viewCount?: number;
 }
 
 export type Category = "all" | "property" | "land" | "car" | "mining" | "machinery";

@@ -1,9 +1,11 @@
 import React from "react";
 import { View, Text, Pressable, Image, Dimensions } from "react-native";
 import { router } from "expo-router";
-import { Heart, MapPin } from "lucide-react-native";
+import { Heart, MapPin, GitCompare } from "lucide-react-native";
 import { Listing, formatPrice } from "@/lib/types";
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from "react-native-reanimated";
+import { useCompareStore, MAX_COMPARE } from "@/lib/state/compare";
+import { Alert } from "react-native";
 
 const { width } = Dimensions.get("window");
 
@@ -33,6 +35,9 @@ const CATEGORY_BG: Record<string, string> = {
 export default function ListingCard({ listing, favorited, onToggleFavorite, compact }: Props) {
   const scale = useSharedValue(1);
   const heartScale = useSharedValue(1);
+  const inCompare = useCompareStore((s) => s.ids.includes(listing.id));
+  const addCompare = useCompareStore((s) => s.add);
+  const removeCompare = useCompareStore((s) => s.remove);
 
   const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
 
@@ -119,27 +124,46 @@ export default function ListingCard({ listing, favorited, onToggleFavorite, comp
             </View>
           ) : null}
 
-          {/* Favorite button */}
-          <Pressable
-            testID={`favorite-button-${listing.id}`}
-            onPress={() => {
-              heartScale.value = withSpring(1.3, {}, () => { heartScale.value = withSpring(1); });
-              onToggleFavorite?.(listing.id);
-            }}
-            style={{
-              position: "absolute", top: 10, right: 10,
-              width: 36, height: 36, borderRadius: 18,
-              backgroundColor: "rgba(0,0,0,0.6)",
-              alignItems: "center", justifyContent: "center",
-            }}
-          >
-            <Heart
-              size={16}
-              color={favorited ? "#FF6B6B" : "#FFFFFF"}
-              fill={favorited ? "#FF6B6B" : "transparent"}
-              strokeWidth={2}
-            />
-          </Pressable>
+          {/* Favorite + Compare buttons */}
+          <View style={{ position: "absolute", top: 10, right: 10, gap: 8 }}>
+            <Pressable
+              testID={`favorite-button-${listing.id}`}
+              onPress={() => {
+                heartScale.value = withSpring(1.3, {}, () => { heartScale.value = withSpring(1); });
+                onToggleFavorite?.(listing.id);
+              }}
+              style={{
+                width: 36, height: 36, borderRadius: 18,
+                backgroundColor: "rgba(0,0,0,0.6)",
+                alignItems: "center", justifyContent: "center",
+              }}
+            >
+              <Heart
+                size={16}
+                color={favorited ? "#FF6B6B" : "#FFFFFF"}
+                fill={favorited ? "#FF6B6B" : "transparent"}
+                strokeWidth={2}
+              />
+            </Pressable>
+            <Pressable
+              testID={`compare-toggle-${listing.id}`}
+              onPress={() => {
+                if (inCompare) {
+                  removeCompare(listing.id);
+                } else {
+                  const ok = addCompare(listing.id);
+                  if (!ok) Alert.alert("Compare full", `You can compare up to ${MAX_COMPARE} listings at once.`);
+                }
+              }}
+              style={{
+                width: 36, height: 36, borderRadius: 18,
+                backgroundColor: inCompare ? "#D4A843" : "rgba(0,0,0,0.6)",
+                alignItems: "center", justifyContent: "center",
+              }}
+            >
+              <GitCompare size={16} color={inCompare ? "#0A0A0F" : "#FFFFFF"} strokeWidth={2} />
+            </Pressable>
+          </View>
         </View>
 
         {/* Info */}
