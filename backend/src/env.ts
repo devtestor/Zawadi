@@ -69,6 +69,14 @@ const envSchema = z.object({
 
   // Marketplace policy
   HIGH_VALUE_USD: z.coerce.number().optional().default(500_000),
+  // Platform fee on each escrow release, in basis points (250 = 2.5%).
+  PLATFORM_FEE_BPS: z.coerce.number().int().min(0).max(2000).optional().default(250),
+  // KYC required when a single trade exceeds this many USD-equivalent units.
+  KYC_REQUIRED_OVER_USD: z.coerce.number().optional().default(1_000),
+  // Default wallet currency. Trades may use other currencies; FX layer converts.
+  WALLET_DEFAULT_CURRENCY: z.string().optional().default("USD"),
+  // Allowed auction-close timing slop in seconds.
+  AUCTION_GRACE_SECONDS: z.coerce.number().int().min(0).optional().default(30),
 });
 
 export const env = envSchema.parse(process.env);

@@ -46,6 +46,18 @@ model User {
   phoneVerifications PhoneVerification[]
   referrer        User?    @relation("UserReferrals", fields: [referredById], references: [id])
   referred        User[]   @relation("UserReferrals")
+
+  // Marketplace transactions
+  wallet          Wallet?
+  walletTopups    WalletTopup[]
+  kyc             Kyc?
+  buyerTrades     Trade[]    @relation("BuyerTrades")
+  sellerTrades   Trade[]    @relation("SellerTrades")
+  bids            Bid[]
+  // Denormalised counters for cheap badges
+  tradeCount      Int        @default(0)
+  ratingSum       Int        @default(0)
+  ratingCount     Int        @default(0)
 }
 
 model Session {
@@ -153,6 +165,14 @@ model Listing {
   underReview   Boolean   @default(false)
   approvedAt    DateTime?
 
+  // Auction support — when auctionEndsAt is set, the listing accepts bids.
+  // minBid / reservePrice / bidIncrement are in minor units of `currency`.
+  auctionEndsAt DateTime?
+  minBid        Int?
+  reservePrice  Int?
+  bidIncrement  Int?
+  auctionClosed Boolean   @default(false)
+
   conversations Conversation[]
   reports       Report[]
   priceHistory  PriceHistory[]
@@ -160,6 +180,8 @@ model Listing {
   boostVariants BoostVariant[]
   duplicates    ListingDuplicate[] @relation("ListingDupe")
   duplicateOf   ListingDuplicate[] @relation("OriginalDupe")
+  bids          Bid[]
+  trades        Trade[]
 
   @@index([status, category, createdAt])
   @@index([country, status])
@@ -167,6 +189,7 @@ model Listing {
   @@index([boosted, boostedUntil])
   @@index([deletedAt])
   @@index([underReview])
+  @@index([auctionEndsAt, auctionClosed])
 }
 
 model BoostPayment {
@@ -263,9 +286,13 @@ model Review {
   subjectId String
   rating    Int
   body      String?
+  // When set, this review is anchored to a completed trade and carries
+  // extra trust signal. Trade-anchored reviews cannot be re-edited freely.
+  tradeId   String?  @unique
   createdAt DateTime @default(now())
   author    User     @relation("ReviewAuthor", fields: [authorId], references: [id], onDelete: Cascade)
   subject   User     @relation("ReviewSubject", fields: [subjectId], references: [id], onDelete: Cascade)
+  trade     Trade?   @relation(fields: [tradeId], references: [id], onDelete: SetNull)
 
   @@unique([authorId, subjectId])
   @@index([subjectId])
@@ -387,4 +414,191 @@ model PushToken {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// -------- Marketplace transactions (internal payment + escrow + trades) --------
+
+// Each user gets a single Wallet per currency snapshot. Money is stored as
+// integer minor units (cents/kobo/RWF). `pendingDebit` tracks money the user
+// has committed but not yet settled (e.g. buyer paid into escrow); the actual
+// balance is decremented at the moment of the debit and refunded on
+// cancellation. `pendingCredit` tracks money owed to the user that hasn't
+// settled yet (e.g. seller has delivered but buyer hasn't confirmed).
+model Wallet {
+  id            String      @id @default(cuid())
+  userId        String      @unique
+  balance       Int         @default(0)
+  pendingDebit  Int         @default(0)
+  pendingCredit Int         @default(0)
+  currency      String      @default("USD")
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions  WalletTxn[]
+}
+
+// Append-only ledger. Never UPDATE a row — only insert reversing entries.
+model WalletTxn {
+  id          String   @id @default(cuid())
+  walletId    String
+  // "deposit" | "withdraw" | "transfer_in" | "transfer_out" |
+  // "escrow_hold" | "escrow_release" | "escrow_refund" | "fee" | "boost"
+  kind        String
+  // Positive credits, negative debits. Same currency as the wallet.
+  amount      Int
+  currency    String
+  // What this entry relates to.
+  refType     String?  // "trade" | "topup" | "boost" | "external"
+  refId       String?
+  status      String   @default("posted") // "posted" | "reversed"
+  description String?
+  createdAt   DateTime @default(now())
+  wallet      Wallet   @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([walletId, createdAt])
+  @@index([refType, refId])
+}
+
+// External top-ups (Pesapal etc.) before they're credited to the wallet.
+model WalletTopup {
+  id           String   @id @default(cuid())
+  userId       String
+  provider     String   @default("pesapal")
+  providerRef  String?  @unique
+  txRef        String   @unique
+  amount       Int
+  currency     String
+  status       String   @default("pending") // "pending" | "successful" | "failed"
+  createdAt    DateTime @default(now())
+  creditedAt   DateTime?
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+// KYC / identity verification — one record per user. Gates high-value trades
+// and business upgrades when env.KYC_REQUIRED_OVER_USD is exceeded.
+model Kyc {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  legalName       String?
+  dob             DateTime?
+  country         String?
+  idType          String?   // "passport" | "national_id" | "driving_license"
+  idNumber        String?
+  idFrontUrl      String?
+  idBackUrl       String?
+  selfieUrl       String?
+  // "unsubmitted" | "pending" | "approved" | "rejected"
+  status          String    @default("unsubmitted")
+  rejectionReason String?
+  submittedAt     DateTime?
+  reviewedAt      DateTime?
+  reviewedById    String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+}
+
+// A Trade ties a Buyer + Seller + Listing + Amount together. State machine:
+//   initiated -> funded -> in_escrow -> delivered -> completed
+//                            \-> disputed
+//                            \-> refunded
+//                            \-> cancelled (only before in_escrow)
+model Trade {
+  id          String    @id @default(cuid())
+  listingId   String
+  buyerId     String
+  sellerId    String
+  amount      Int
+  currency    String
+  feeAmount   Int       @default(0)
+  status      String    @default("initiated")
+  fundedAt    DateTime?
+  escrowedAt  DateTime?
+  deliveredAt DateTime?
+  completedAt DateTime?
+  refundedAt  DateTime?
+  cancelledAt DateTime?
+  // Optional smart-contract anchor (off-chain content + on-chain anchor)
+  contractId  String?   @unique
+  // If this trade originated from an auction bid
+  bidId       String?   @unique
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  listing     Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  buyer       User      @relation("BuyerTrades", fields: [buyerId], references: [id], onDelete: Cascade)
+  seller      User      @relation("SellerTrades", fields: [sellerId], references: [id], onDelete: Cascade)
+  contract    Contract? @relation(fields: [contractId], references: [id])
+  bid         Bid?      @relation(fields: [bidId], references: [id])
+  review      Review?
+  events      TradeEvent[]
+
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([listingId])
+  @@index([status])
+}
+
+// Append-only event log per trade — drives the timeline UI.
+model TradeEvent {
+  id        String   @id @default(cuid())
+  tradeId   String
+  kind      String   // matches Trade.status transitions
+  actorId   String?  // user who triggered the event (null = system)
+  note      String?
+  createdAt DateTime @default(now())
+  trade     Trade    @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+
+  @@index([tradeId, createdAt])
+}
+
+// "Smart" contract — really an off-chain signed agreement we can optionally
+// anchor to a public chain by recording a transaction hash. The terms field
+// is the authoritative content; chainTxHash + contentHash give third parties
+// a way to verify it post-hoc.
+model Contract {
+  id             String    @id @default(cuid())
+  terms          String
+  // sha256 hex of the canonicalised terms
+  contentHash    String?
+  // Optional chain network and tx hash. We never call out to a chain from
+  // here — record whatever the user/operator pastes after anchoring.
+  chain          String?   // "polygon" | "stellar" | "hedera" | ...
+  chainTxHash    String?
+  buyerId        String
+  sellerId       String
+  // "draft" | "signed_buyer" | "signed_seller" | "active" | "executed" | "voided"
+  status         String    @default("draft")
+  buyerSignedAt  DateTime?
+  sellerSignedAt DateTime?
+  executedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  trade          Trade?
+
+  @@index([buyerId])
+  @@index([sellerId])
+}
+
+// Auction bids.
+model Bid {
+  id         String   @id @default(cuid())
+  listingId  String
+  bidderId   String
+  amount     Int      // minor units
+  currency   String
+  // Optional max bid for proxy bidding.
+  maxAmount  Int?
+  // "active" | "outbid" | "won" | "withdrawn" | "rejected"
+  status     String   @default("active")
+  createdAt  DateTime @default(now())
+  listing    Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  bidder     User     @relation(fields: [bidderId], references: [id], onDelete: Cascade)
+  trade      Trade?
+
+  @@index([listingId, amount])
+  @@index([bidderId])
 }
