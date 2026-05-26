@@ -14,8 +14,14 @@ import { reportsRouter } from "./routes/reports";
 import { adminRouter } from "./routes/admin";
 import { pushTokensRouter } from "./routes/push-tokens";
 import { savedSearchesRouter } from "./routes/saved-searches";
+import { walletRouter } from "./routes/wallet";
+import { kycRouter } from "./routes/kyc";
+import { tradesRouter } from "./routes/trades";
+import { contractsRouter } from "./routes/contracts";
+import { bidsRouter } from "./routes/bids";
 import { prisma } from "./prisma";
 import { startSavedSearchScanner } from "./lib/saved-search-scanner";
+import { startAuctionScanner } from "./lib/auction-scanner";
 
 import type { Logger } from "./lib/logger";
 
@@ -156,6 +162,11 @@ app.route("/api/reports", reportsRouter);
 app.route("/api/admin", adminRouter);
 app.route("/api/push-tokens", pushTokensRouter);
 app.route("/api/saved-searches", savedSearchesRouter);
+app.route("/api/wallet", walletRouter);
+app.route("/api/kyc", kycRouter);
+app.route("/api/trades", tradesRouter);
+app.route("/api/contracts", contractsRouter);
+app.route("/api/bids", bidsRouter);
 
 // Start (or rejoin) a LiveKit video room scoped to a chat conversation. Drops a
 // "video-room" message into the chat so both parties can join.
@@ -292,6 +303,7 @@ app.onError((err, c) => {
 
 installGlobalErrorHandlers();
 startSavedSearchScanner();
+startAuctionScanner();
 
 const port = parseInt(env.PORT);
 logger.info("server started", { port, env: env.NODE_ENV });

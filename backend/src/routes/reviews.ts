@@ -14,6 +14,8 @@ const router = new Hono<{ Variables: Variables }>();
 const reviewSchema = z.object({
   rating: z.number().int().min(1).max(5),
   body: z.string().trim().max(1000).optional(),
+  // Optional — when set, the review is anchored to a completed trade.
+  tradeId: z.string().min(1).optional(),
 });
 
 // GET /api/reviews/user/:userId - list reviews for a user + summary
@@ -33,7 +35,18 @@ router.get("/user/:userId", async (c) => {
     }),
     prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, name: true, image: true, verifiedAt: true, createdAt: true },
+      select: {
+        id: true,
+        name: true,
+        image: true,
+        verifiedAt: true,
+        role: true,
+        businessName: true,
+        tradeCount: true,
+        ratingSum: true,
+        ratingCount: true,
+        createdAt: true,
+      },
     }),
   ]);
   if (!target) return c.json({ error: { message: "User not found" } }, 404);
@@ -61,26 +74,50 @@ router.post("/user/:userId", zValidator("json", reviewSchema), async (c) => {
   const target = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
   if (!target) return c.json({ error: { message: "User not found" } }, 404);
 
-  const { rating, body } = c.req.valid("json");
+  const { rating, body, tradeId } = c.req.valid("json");
 
+  // If anchoring to a trade, validate participation + completion.
+  if (tradeId) {
+    const trade = await prisma.trade.findUnique({ where: { id: tradeId } });
+    if (!trade) return c.json({ error: { message: "Trade not found" } }, 404);
+    if (trade.status !== "completed") {
+      return c.json({ error: { message: "Trade must be completed to leave a review" } }, 400);
+    }
+    if (trade.buyerId !== user.id && trade.sellerId !== user.id) {
+      return c.json({ error: { message: "Only trade participants can review" } }, 403);
+    }
+    const otherParty = trade.buyerId === user.id ? trade.sellerId : trade.buyerId;
+    if (otherParty !== userId) {
+      return c.json({ error: { message: "Trade subject doesn't match" } }, 400);
+    }
+  }
+
+  // We have a (authorId, subjectId) unique index; replace any prior review
+  // with the same pair but keep a tradeId if newly provided.
   const review = await prisma.review.upsert({
     where: { authorId_subjectId: { authorId: user.id, subjectId: userId } },
-    create: { authorId: user.id, subjectId: userId, rating, body },
-    update: { rating, body },
+    create: { authorId: user.id, subjectId: userId, rating, body, tradeId },
+    update: { rating, body, tradeId: tradeId ?? undefined },
   });
 
-  // A seller becomes "verified" once they receive their 3rd review with avg >= 4.
+  // Rebuild denormalised rating counters + verified flag.
   const stats = await prisma.review.aggregate({
     where: { subjectId: userId },
     _avg: { rating: true },
+    _sum: { rating: true },
     _count: { _all: true },
   });
-  if ((stats._count._all ?? 0) >= 3 && (stats._avg.rating ?? 0) >= 4) {
-    await prisma.user.update({
-      where: { id: userId },
-      data: { verifiedAt: new Date() },
-    });
-  }
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      ratingSum: stats._sum.rating ?? 0,
+      ratingCount: stats._count._all,
+      // Stay verified once you've crossed the threshold even if average dips.
+      ...((stats._count._all ?? 0) >= 3 && (stats._avg.rating ?? 0) >= 4
+        ? { verifiedAt: new Date() }
+        : {}),
+    },
+  });
 
   return c.json({ data: review }, 201);
 });

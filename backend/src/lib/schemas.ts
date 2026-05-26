@@ -136,3 +136,61 @@ export const businessApplySchema = z.object({
 export const referralRedeemSchema = z.object({
   code: trimmed.min(4).max(20),
 });
+
+// ----- Wallet / payments / KYC / trades / contracts / bids -----
+
+export const walletTopupSchema = z.object({
+  amount: z.number().int().positive(),
+  currency: trimmed.min(3).max(4),
+  phone: trimmed.max(30).optional(),
+});
+
+export const tradeStartSchema = z.object({
+  listingId: trimmed.min(1),
+  // Optional — defaults to listing.price.
+  amount: z.number().int().positive().optional(),
+});
+
+export const tradeActionSchema = z.object({
+  action: z.enum(["fund", "deliver", "confirm", "dispute", "cancel", "refund"]),
+});
+
+export const contractCreateSchema = z.object({
+  tradeId: trimmed.min(1),
+  terms: trimmed.min(20).max(20_000),
+});
+
+export const contractSignSchema = z.object({
+  // Buyer or seller signs; server figures out which one from the session.
+  // Optional chain anchor (operator pastes after sending the on-chain tx).
+  chain: z.enum(["polygon", "stellar", "hedera", "celo", "base"]).optional(),
+  chainTxHash: trimmed.max(120).optional(),
+});
+
+export const kycSubmitSchema = z.object({
+  legalName: trimmed.min(2).max(120),
+  dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  country: trimmed.min(2).max(80),
+  idType: z.enum(["passport", "national_id", "driving_license"]),
+  idNumber: trimmed.min(3).max(50),
+  idFrontUrl: z.string().url(),
+  idBackUrl: z.string().url().optional(),
+  selfieUrl: z.string().url(),
+});
+
+export const kycReviewSchema = z.object({
+  action: z.enum(["approve", "reject"]),
+  rejectionReason: trimmed.max(500).optional(),
+});
+
+export const auctionConfigSchema = z.object({
+  endsAt: z.string().datetime(),
+  minBid: z.number().int().nonnegative(),
+  reservePrice: z.number().int().nonnegative().optional(),
+  bidIncrement: z.number().int().positive().optional(),
+});
+
+export const bidSchema = z.object({
+  amount: z.number().int().positive(),
+  maxAmount: z.number().int().positive().optional(),
+});
