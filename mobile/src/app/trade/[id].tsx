@@ -101,6 +101,57 @@ export default function TradeDetailScreen() {
               Platform fee {formatMoney(trade.feeAmount, trade.currency)} on completion
             </Text>
           ) : null}
+          {trade.taxAmount && trade.taxAmount > 0 ? (
+            <Text style={{ color: "#666680", fontSize: 11, marginTop: 2 }}>
+              VAT {((trade.taxRateBps ?? 0) / 100).toFixed(1)}% on fee · {formatMoney(trade.taxAmount, trade.currency)}
+            </Text>
+          ) : null}
+          {trade.status === "completed" ? (
+            <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+              <Pressable
+                testID="trade-receipt"
+                onPress={async () => {
+                  const { openBrowserAsync } = await import("expo-web-browser");
+                  const url = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api/trades/${trade.id}/receipt?format=html`;
+                  openBrowserAsync(url);
+                }}
+                style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: "#1E1E0A", borderWidth: 1, borderColor: "#D4A84366" }}
+              >
+                <Text style={{ color: "#D4A843", fontWeight: "800", fontSize: 12 }}>📄 View</Text>
+              </Pressable>
+              <Pressable
+                testID="trade-receipt-pdf"
+                onPress={async () => {
+                  try {
+                    const SecureStore = await import("expo-secure-store");
+                    const Print = await import("expo-print");
+                    const Sharing = await import("expo-sharing");
+                    const cookie = (await SecureStore.getItemAsync("zawadi_auth_cookie")) || "";
+                    const res = await fetch(
+                      `${process.env.EXPO_PUBLIC_BACKEND_URL}/api/trades/${trade.id}/receipt?format=html`,
+                      { headers: cookie ? { Cookie: cookie } : undefined },
+                    );
+                    const html = await res.text();
+                    const { uri } = await Print.printToFileAsync({ html });
+                    if (await Sharing.isAvailableAsync()) {
+                      await Sharing.shareAsync(uri, { mimeType: "application/pdf" });
+                    }
+                  } catch (e: unknown) {
+                    const Alert = (await import("react-native")).Alert;
+                    Alert.alert("Couldn't make PDF", e instanceof Error ? e.message : "Try again");
+                  }
+                }}
+                style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: "#16161E", borderWidth: 1, borderColor: "#2A2A3A" }}
+              >
+                <Text style={{ color: "#FFFFFF", fontWeight: "800", fontSize: 12 }}>⬇ PDF</Text>
+              </Pressable>
+            </View>
+          ) : null}
+          {trade.status === "delivered" && trade.releaseDueAt ? (
+            <Text style={{ color: "#666680", fontSize: 11, marginTop: 6 }}>
+              Auto-releases on {new Date(trade.releaseDueAt).toLocaleDateString()} unless you confirm or dispute.
+            </Text>
+          ) : null}
         </Pressable>
 
         <View style={{ backgroundColor: "#12121A", borderRadius: 16, borderWidth: 1, borderColor: "#1E1E2A", padding: 16 }}>

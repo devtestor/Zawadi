@@ -276,6 +276,23 @@ export default function HomeScreen() {
           ) : null
         }
       />
+
+      {compareCount > 0 ? (
+        <Pressable
+          testID="compare-pill"
+          onPress={() => router.push("/listing/compare" as any)}
+          style={{
+            position: "absolute", bottom: 24, alignSelf: "center",
+            flexDirection: "row", alignItems: "center", gap: 8,
+            backgroundColor: "#D4A843", paddingHorizontal: 18, paddingVertical: 12,
+            borderRadius: 24,
+            shadowColor: "#000", shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 6 },
+          }}
+        >
+          <GitCompare size={16} color="#0A0A0F" strokeWidth={2.5} />
+          <Text style={{ color: "#0A0A0F", fontWeight: "900" }}>Compare ({compareCount})</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }

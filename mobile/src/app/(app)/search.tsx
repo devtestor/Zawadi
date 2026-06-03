@@ -13,6 +13,7 @@ import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { FlashList } from "@shopify/flash-list";
 import { useLocalSearchParams } from "expo-router";
 import { Search, X, BellPlus } from "lucide-react-native";
+import VoiceSearchButton from "@/components/VoiceSearchButton";
 import { api } from "@/lib/api/api";
 import { Listing, AFRICAN_COUNTRIES, Category, CATEGORY_LABELS } from "@/lib/types";
 import ListingCard from "@/components/ListingCard";

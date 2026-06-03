@@ -58,6 +58,11 @@ export interface Trade {
   amount: number;
   currency: string;
   feeAmount: number;
+  taxAmount?: number;
+  taxRateBps?: number;
+  riskScore?: number;
+  releaseDueAt?: string | null;
+  receiptUrl?: string | null;
   status:
     | "initiated"
     | "funded"

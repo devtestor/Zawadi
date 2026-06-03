@@ -53,6 +53,18 @@ export default function SellerScreen() {
     queryFn: () => api.get<SellerPayload>(`/api/reviews/user/${id}`),
   });
 
+  const { data: stats } = useQuery({
+    queryKey: ["seller-stats", id],
+    queryFn: () =>
+      api.get<{
+        realtor: boolean;
+        listings: number;
+        buyer: { total: number; completed: number; disputed: number; successRate: number | null };
+        seller: { total: number; completed: number; disputed: number; successRate: number | null };
+      }>(`/api/me/${id}/stats`),
+    enabled: !!id,
+  });
+
   const submitReview = useMutation({
     mutationFn: () => api.post(`/api/reviews/user/${id}`, { rating, body: body.trim() || undefined }),
     onSuccess: () => {
@@ -138,6 +150,29 @@ export default function SellerScreen() {
           </View>
         </View>
 
+        {/* Trade reputation */}
+        {stats ? (
+          <View style={{ marginHorizontal: 20, marginBottom: 16, backgroundColor: "#12121A", borderRadius: 16, borderWidth: 1, borderColor: "#1E1E2A", padding: 16 }}>
+            {stats.realtor ? (
+              <Text style={{ color: "#D4A843", fontSize: 11, fontWeight: "900", letterSpacing: 1, marginBottom: 6 }}>REALTOR</Text>
+            ) : null}
+            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 8 }}>
+              <StatBlock label="Listings" value={String(stats.listings)} />
+              <StatBlock label="As seller" value={String(stats.seller.total)} subtitle={
+                stats.seller.successRate !== null ? `${stats.seller.successRate}% success` : "no trades yet"
+              } />
+              <StatBlock label="As buyer" value={String(stats.buyer.total)} subtitle={
+                stats.buyer.successRate !== null ? `${stats.buyer.successRate}% success` : "no trades yet"
+              } />
+            </View>
+            {(stats.seller.disputed > 0 || stats.buyer.disputed > 0) ? (
+              <Text style={{ color: "#FF6B6B", fontSize: 11, fontWeight: "700", marginTop: 8 }}>
+                {stats.seller.disputed + stats.buyer.disputed} disputed trade{stats.seller.disputed + stats.buyer.disputed === 1 ? "" : "s"}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+
         {/* Leave a review */}
         {!isSelf && session?.user ? (
           <View style={{ marginHorizontal: 20, padding: 16, backgroundColor: "#12121A", borderRadius: 16, borderWidth: 1, borderColor: "#1E1E2A", marginBottom: 24 }}>
@@ -218,6 +253,18 @@ export default function SellerScreen() {
           )}
         </View>
       </ScrollView>
+    </View>
+  );
+}
+
+function StatBlock({ label, value, subtitle }: { label: string; value: string; subtitle?: string }) {
+  return (
+    <View style={{ flex: 1, alignItems: "center" }}>
+      <Text style={{ color: "#D4A843", fontSize: 22, fontWeight: "900" }}>{value}</Text>
+      <Text style={{ color: "#666680", fontSize: 11, fontWeight: "700", marginTop: 2 }}>{label}</Text>
+      {subtitle ? (
+        <Text style={{ color: "#888", fontSize: 10, marginTop: 4, textAlign: "center" }}>{subtitle}</Text>
+      ) : null}
     </View>
   );
 }

@@ -10,8 +10,8 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { useSession } from "@/lib/auth/use-session";
 import { registerForPushNotifications } from "@/lib/push";
-import ErrorBoundary from "@/components/ErrorBoundary";
 import { installOfflineFavoritesSync } from "@/lib/offline-favorites";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 SplashScreen.preventAutoHideAsync();
 
