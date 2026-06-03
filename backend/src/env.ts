@@ -91,6 +91,22 @@ const envSchema = z.object({
   WALLET_DEFAULT_CURRENCY: z.string().optional().default("USD"),
   // Allowed auction-close timing slop in seconds.
   AUCTION_GRACE_SECONDS: z.coerce.number().int().min(0).optional().default(30),
+  // Escrow auto-release N days after `delivered` unless disputed/confirmed.
+  HOLDING_PERIOD_DAYS: z.coerce.number().int().min(0).optional().default(3),
+  // Outbound webhook delivery
+  WEBHOOK_MAX_ATTEMPTS: z.coerce.number().int().min(1).optional().default(8),
+  WEBHOOK_BASE_BACKOFF_MS: z.coerce.number().int().min(1000).optional().default(30_000),
+
+  // Sanctions / PEP screening
+  SANCTIONS_PROVIDER: z.enum(["none", "opensanctions", "csv"]).optional().default("none"),
+  OPENSANCTIONS_API_KEY: z.string().optional().default(""),
+  SANCTIONS_CSV_URL: z.string().optional().default(""),
+
+  // Geo-IP
+  IPINFO_TOKEN: z.string().optional().default(""),
+
+  // High-value 2FA threshold (USD-equivalent minor units)
+  TWOFA_REQUIRED_OVER_USD: z.coerce.number().int().min(0).optional().default(5_000),
 });
 
 export const env = envSchema.parse(process.env);

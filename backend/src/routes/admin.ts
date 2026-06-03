@@ -22,6 +22,43 @@ router.use("*", async (c, next) => {
   await next();
 });
 
+// Sudo gate for destructive routes (DELETE, dispute resolve, withdraw mark,
+// user ban). Requires a fresh 2FA-backed token in `X-Sudo`. Reads are exempt.
+router.use("*", async (c, next) => {
+  const sudoPathRe = /\/(reports\/.*\/resolve|disputes\/.*\/resolve|withdrawals\/.*\/mark|users\/.*\/(ban|unban)|listings\/[^/]+|wallet\/credit)$/;
+  const needsSudo =
+    c.req.method !== "GET" && (c.req.method === "DELETE" || sudoPathRe.test(c.req.path));
+  if (needsSudo) {
+    const actor = c.get("user");
+    if (!actor) return c.json({ error: { message: "Unauthorized" } }, 401);
+    const token = c.req.header("x-sudo");
+    if (!token) {
+      return c.json({ error: { message: "Privileged action — POST /api/me/sudo with 2FA first" } }, 401);
+    }
+    const { verifySudoToken } = await import("../lib/sudo");
+    if (!(await verifySudoToken(token, actor.id))) {
+      return c.json({ error: { message: "Sudo session expired or invalid" } }, 401);
+    }
+  }
+  await next();
+});
+
+// Audit log every mutating admin call. Reads are skipped to keep the table
+// from filling up; mutations get a row including actor, path, and target id.
+router.use("*", async (c, next) => {
+  await next();
+  if (c.req.method === "GET") return;
+  const actor = c.get("user");
+  const { audit } = await import("../lib/audit");
+  audit({
+    actorId: actor?.id ?? null,
+    action: `admin.${c.req.method.toLowerCase()}.${c.req.path}`,
+    ip: c.req.header("x-forwarded-for")?.split(",")[0]?.trim(),
+    userAgent: c.req.header("user-agent") ?? undefined,
+    metadata: { status: c.res.status },
+  }).catch(() => {});
+});
+
 const resolveSchema = z.object({
   action: z.enum(["dismiss", "remove_listing", "ban_user"]),
   note: z.string().trim().max(500).optional(),
@@ -129,6 +166,120 @@ router.post("/queue/:id/reject", async (c) => {
   return c.json({ data: { ok: true } });
 });
 
+// --- Settlement report (CSV) ---
+// GET /api/admin/settlement.csv?from=YYYY-MM-DD&to=YYYY-MM-DD
+// Completed trades within the range, grouped by listing.country, with totals
+// for gross, fees, VAT and net-to-sellers.
+router.get("/settlement.csv", async (c) => {
+  const fromStr = c.req.query("from");
+  const toStr = c.req.query("to");
+  const from = fromStr ? new Date(fromStr) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const to = toStr ? new Date(toStr) : new Date();
+
+  const trades = await prisma.trade.findMany({
+    where: { status: "completed", completedAt: { gte: from, lte: to } },
+    include: { listing: { select: { country: true, category: true } } },
+    take: 5000,
+  });
+
+  type Bucket = { country: string; currency: string; count: number; gross: number; fees: number; vat: number; net: number };
+  const buckets = new Map<string, Bucket>();
+  for (const t of trades) {
+    const key = `${t.listing.country}|${t.currency}`;
+    const b = buckets.get(key) ?? {
+      country: t.listing.country,
+      currency: t.currency,
+      count: 0,
+      gross: 0,
+      fees: 0,
+      vat: 0,
+      net: 0,
+    };
+    b.count += 1;
+    b.gross += t.amount;
+    b.fees += t.feeAmount;
+    b.vat += t.taxAmount;
+    b.net += t.amount - t.feeAmount;
+    buckets.set(key, b);
+  }
+
+  const lines = ["country,currency,trade_count,gross_minor,fees_minor,vat_minor,net_to_sellers_minor"];
+  for (const b of buckets.values()) {
+    lines.push([b.country, b.currency, b.count, b.gross, b.fees, b.vat, b.net].join(","));
+  }
+  c.header("Content-Type", "text/csv; charset=utf-8");
+  c.header(
+    "Content-Disposition",
+    `attachment; filename="zawadi-settlement-${from.toISOString().slice(0, 10)}-to-${to.toISOString().slice(0, 10)}.csv"`,
+  );
+  return c.body(lines.join("\n"));
+});
+
+// --- Withdrawal queue ---
+
+router.get("/withdrawals", async (c) => {
+  const status = c.req.query("status") || "pending";
+  const rows = await prisma.withdrawal.findMany({
+    where: { status },
+    include: { user: { select: { id: true, name: true, email: true, phone: true } } },
+    orderBy: { createdAt: "asc" },
+    take: 100,
+  });
+  return c.json({ data: rows });
+});
+
+const withdrawalMarkSchema = z.object({
+  status: z.enum(["paid", "failed"]),
+  providerRef: z.string().trim().max(120).optional(),
+  failureReason: z.string().trim().max(500).optional(),
+});
+
+router.post("/withdrawals/:id/mark", zValidator("json", withdrawalMarkSchema), async (c) => {
+  const me = c.get("user");
+  if (!me) return c.json({ error: { message: "Unauthorized" } }, 401);
+  const { id } = c.req.param();
+  const { status, providerRef, failureReason } = c.req.valid("json");
+
+  const w = await prisma.withdrawal.findUnique({ where: { id } });
+  if (!w) return c.json({ error: { message: "Not found" } }, 404);
+  if (w.status !== "pending") return c.json({ error: { message: `Already ${w.status}` } }, 400);
+
+  if (status === "paid") {
+    await prisma.withdrawal.update({
+      where: { id },
+      data: { status: "paid", paidAt: new Date(), providerRef: providerRef ?? null },
+    });
+    const { sendPushToUser } = await import("../lib/push");
+    sendPushToUser(w.userId, {
+      title: "Withdrawal paid",
+      body: `${w.currency} ${(w.amount / 100).toFixed(2)} sent to your ${w.method === "mobile_money" ? "mobile money" : "bank"}.`,
+      data: { type: "withdrawal", withdrawalId: w.id },
+      kind: "chat",
+    }).catch(() => {});
+    return c.json({ data: { ok: true } });
+  }
+
+  // Failed: reverse the original debit so funds reappear in the wallet.
+  const { getOrCreateWallet, postEntry } = await import("../lib/wallet");
+  const wallet = await getOrCreateWallet(w.userId, w.currency);
+  await prisma.$transaction(async (tx) => {
+    await postEntry(tx, {
+      walletId: wallet.id,
+      kind: "deposit",
+      amount: w.amount,
+      currency: w.currency,
+      refType: "external",
+      refId: w.id,
+      description: `Withdrawal reversed: ${failureReason ?? "no reason"}`,
+    });
+    await tx.withdrawal.update({
+      where: { id },
+      data: { status: "failed", failureReason: failureReason ?? "Marked failed by admin" },
+    });
+  });
+  return c.json({ data: { ok: true } });
+});
+
 // --- Manual wallet credit (audited) ---
 
 router.post("/wallet/credit", async (c) => {
@@ -210,31 +361,111 @@ router.get("/disputes", async (c) => {
 });
 
 router.post("/disputes/:id/resolve", async (c) => {
+  const me = c.get("user");
+  if (!me) return c.json({ error: { message: "Unauthorized" } }, 401);
   const { id } = c.req.param();
-  const body = (await c.req.json().catch(() => ({}))) as { action?: "refund" | "release" };
-  if (!body.action) return c.json({ error: { message: "action required" } }, 400);
-
-  // Reuse the trade route's wallet logic by calling its action endpoint
-  // semantics directly through Prisma. We keep this admin path explicit so
-  // the audit trail records the admin actor.
+  const body = (await c.req.json().catch(() => ({}))) as {
+    action?: "refund" | "release";
+    note?: string;
+  };
+  if (body.action !== "refund" && body.action !== "release") {
+    return c.json({ error: { message: "action must be refund or release" } }, 400);
+  }
   const trade = await prisma.trade.findUnique({ where: { id } });
   if (!trade) return c.json({ error: { message: "Not found" } }, 404);
   if (trade.status !== "disputed") {
     return c.json({ error: { message: `Trade is ${trade.status}` } }, 400);
   }
 
+  const { getOrCreateWallet, postEntry } = await import("../lib/wallet");
+  const buyerWallet = await getOrCreateWallet(trade.buyerId, trade.currency);
+  const sellerWallet = await getOrCreateWallet(trade.sellerId, trade.currency);
+
   if (body.action === "refund") {
-    return c.json({
+    await prisma.$transaction(async (tx) => {
+      await postEntry(tx, {
+        walletId: buyerWallet.id,
+        kind: "escrow_refund",
+        amount: trade.amount,
+        currency: trade.currency,
+        refType: "trade",
+        refId: trade.id,
+        description: `Refunded by admin (${body.note ?? ""})`,
+      });
+      await tx.trade.update({
+        where: { id: trade.id },
+        data: { status: "refunded", refundedAt: new Date() },
+      });
+      await tx.tradeEvent.create({
+        data: {
+          tradeId: trade.id,
+          kind: "refunded",
+          actorId: me.id,
+          note: body.note ?? "admin_refund",
+        },
+      });
+    });
+    return c.json({ data: { ok: true } });
+  }
+
+  // release: same wallet flow as buyer confirm, but admin is the actor.
+  const fee = trade.feeAmount;
+  const sellerCredit = trade.amount - fee;
+  await prisma.$transaction(async (tx) => {
+    await tx.walletTxn.create({
       data: {
-        note: "Have the seller hit POST /api/trades/:id/action with action=refund, OR use the dispute admin tool. Auto-refund TBD.",
+        walletId: buyerWallet.id,
+        kind: "transfer_out",
+        amount: -trade.amount,
+        currency: trade.currency,
+        refType: "trade",
+        refId: trade.id,
+        description: "Escrow released by admin",
       },
     });
-  }
-  return c.json({
-    data: {
-      note: "release path TBD — follow the standard confirm flow.",
-    },
+    await tx.wallet.update({
+      where: { id: buyerWallet.id },
+      data: { pendingDebit: { decrement: trade.amount } },
+    });
+    await postEntry(tx, {
+      walletId: sellerWallet.id,
+      kind: "escrow_release",
+      amount: sellerCredit,
+      currency: trade.currency,
+      refType: "trade",
+      refId: trade.id,
+      description: "Escrow release (admin)",
+    });
+    if (fee > 0) {
+      await tx.walletTxn.create({
+        data: {
+          walletId: sellerWallet.id,
+          kind: "fee",
+          amount: -fee,
+          currency: trade.currency,
+          refType: "trade",
+          refId: trade.id,
+          description: "Platform fee",
+        },
+      });
+    }
+    await tx.trade.update({
+      where: { id: trade.id },
+      data: { status: "completed", completedAt: new Date() },
+    });
+    await tx.tradeEvent.create({
+      data: {
+        tradeId: trade.id,
+        kind: "completed",
+        actorId: me.id,
+        note: body.note ?? "admin_release",
+      },
+    });
+    await tx.user.update({ where: { id: trade.buyerId }, data: { tradeCount: { increment: 1 } } });
+    await tx.user.update({ where: { id: trade.sellerId }, data: { tradeCount: { increment: 1 } } });
+    await tx.listing.update({ where: { id: trade.listingId }, data: { status: "sold" } }).catch(() => {});
   });
+  return c.json({ data: { ok: true } });
 });
 
 export { router as adminRouter };

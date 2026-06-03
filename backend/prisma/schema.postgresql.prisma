@@ -54,6 +54,10 @@ model User {
   buyerTrades     Trade[]    @relation("BuyerTrades")
   sellerTrades   Trade[]    @relation("SellerTrades")
   bids            Bid[]
+  withdrawals     Withdrawal[]
+  webhooks        Webhook[]
+  apiKeys         ApiKey[]
+  totp            TotpSecret?
   // Denormalised counters for cheap badges
   tradeCount      Int        @default(0)
   ratingSum       Int        @default(0)
@@ -515,6 +519,11 @@ model Trade {
   amount      Int
   currency    String
   feeAmount   Int       @default(0)
+  taxAmount   Int       @default(0)
+  taxRateBps  Int       @default(0)
+  riskScore   Int       @default(0)
+  releaseDueAt DateTime?     // auto-release escrow at/after this if not disputed/confirmed
+  receiptUrl  String?
   status      String    @default("initiated")
   fundedAt    DateTime?
   escrowedAt  DateTime?
@@ -539,6 +548,7 @@ model Trade {
   bid         Bid?      @relation(fields: [bidId], references: [id])
   review      Review?
   events      TradeEvent[]
+  splits      TradeSplit[]
 
   @@index([buyerId])
   @@index([sellerId])
@@ -605,6 +615,9 @@ model Bid {
   maxAmount  Int?
   // "active" | "outbid" | "won" | "withdrawn" | "rejected"
   status     String   @default("active")
+  // When non-null, an escrow_hold txn was posted to the bidder's wallet for
+  // this bid. We refund it when the bid is outbid / withdrawn / rejected.
+  holdTxnId  String?
   createdAt  DateTime @default(now())
   listing    Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
   bidder     User     @relation(fields: [bidderId], references: [id], onDelete: Cascade)
@@ -612,4 +625,155 @@ model Bid {
 
   @@index([listingId, amount])
   @@index([bidderId])
+}
+
+// --- Withdrawals: ops queue. The wallet is debited immediately; payout is
+//     completed manually or via a payouts API and marked here. On failure,
+//     ops calls /admin/withdrawals/:id/fail which reverses the debit.
+model Withdrawal {
+  id          String   @id @default(cuid())
+  userId      String
+  walletTxnId String?  @unique
+  amount      Int
+  currency    String
+  method      String   // "mobile_money" | "bank"
+  phone       String?
+  bankName    String?
+  bankAccount String?
+  status      String   @default("pending") // "pending" | "paid" | "failed"
+  providerRef String?
+  failureReason String?
+  createdAt   DateTime @default(now())
+  paidAt      DateTime?
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+// --- Outbound webhooks (signed). Subscribed events list is comma-separated.
+model Webhook {
+  id        String   @id @default(cuid())
+  ownerId   String
+  url       String
+  secret    String   // primary HMAC secret
+  // Secondary secret active during a rotation overlap window. When set, we
+  // include BOTH signatures in outbound deliveries so subscribers can rotate
+  // without dropping events. Subscribers should accept either v1=... value.
+  secretPrev String?
+  secretRotatedAt DateTime?
+  events    String   // CSV of event names
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  deliveries WebhookDelivery[]
+
+  @@index([ownerId])
+}
+
+model WebhookDelivery {
+  id          String   @id @default(cuid())
+  webhookId   String
+  event       String
+  payload     String   // JSON
+  status      String   @default("pending") // "pending" | "delivered" | "failed"
+  attempts    Int      @default(0)
+  responseCode Int?
+  responseBody String?
+  nextAttemptAt DateTime?
+  lastAttemptAt DateTime?
+  createdAt   DateTime @default(now())
+  webhook     Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+  @@index([webhookId, createdAt])
+}
+
+// --- Append-only audit log. Every admin or system-side action lands here.
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  action    String   // e.g. "trade.refund", "kyc.approve"
+  target    String?  // e.g. "trade", "user"
+  targetId  String?
+  ip        String?
+  userAgent String?
+  metadata  String?  // JSON
+  createdAt DateTime @default(now())
+
+  @@index([actorId, createdAt])
+  @@index([target, targetId])
+}
+
+// --- API keys for partner integrations. Prefix is the visible label; only
+//     the hash is stored. Scopes is CSV: "listings:read,trades:read".
+model ApiKey {
+  id         String   @id @default(cuid())
+  userId     String
+  name       String
+  prefix     String   @unique
+  hash       String
+  scopes     String   @default("")
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// --- Idempotency keys for mutating endpoints. Stores the response body so
+//     callers that retry with the same key get the same result back.
+model IdempotencyKey {
+  key        String   @id
+  userId     String?
+  method     String
+  path       String
+  status     Int
+  response   String   // JSON body
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
+
+  @@index([expiresAt])
+}
+
+// --- TOTP 2FA. We use 30-second window, SHA-1 (RFC 6238 default) so any
+//     authenticator app works. Activated when verifiedAt is set.
+model TotpSecret {
+  userId     String   @id
+  secret     String
+  verifiedAt DateTime?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// --- Sanctions hit cache. We keep matched names/IDs per KYC submission so
+//     admins can re-review without re-querying the upstream feed.
+model SanctionsHit {
+  id        String   @id @default(cuid())
+  kycId    String
+  source   String   // "OFAC_SDN" | "UN" | "EU" | "custom"
+  score    Float
+  matchedName String
+  details  String?  // JSON
+  createdAt DateTime @default(now())
+  kyc      Kyc      @relation(fields: [kycId], references: [id], onDelete: Cascade)
+
+  @@index([kycId])
+}
+
+// --- Trade payout splits: optionally fan out a seller's net to N parties.
+//     Percentages are basis points (10000 = 100%). The Sum across all rows
+//     for a trade must be 10000 or the release falls back to "all to seller".
+model TradeSplit {
+  id          String   @id @default(cuid())
+  tradeId     String
+  payeeUserId String
+  bps         Int      // basis points of net
+  note        String?
+  paidAt      DateTime?
+  trade       Trade    @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+
+  @@index([tradeId])
+  @@index([payeeUserId])
 }

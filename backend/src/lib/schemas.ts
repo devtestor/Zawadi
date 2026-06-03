@@ -137,6 +137,11 @@ export const referralRedeemSchema = z.object({
   code: trimmed.min(4).max(20),
 });
 
+export const boostVariantCreateSchema = z.object({
+  label: z.enum(["A", "B"]).default("A"),
+  title: trimmed.min(3).max(140),
+});
+
 // ----- Wallet / payments / KYC / trades / contracts / bids -----
 
 export const walletTopupSchema = z.object({

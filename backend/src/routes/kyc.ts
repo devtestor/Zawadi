@@ -46,6 +46,17 @@ router.post("/", zValidator("json", kycSubmitSchema), async (c) => {
     create: { userId: user.id, ...data },
     update: data,
   });
+
+  // Fire-and-forget sanctions screen. Hits are persisted; admin reviews trigger.
+  (async () => {
+    const { screenName, recordHitsForKyc } = await import("../lib/sanctions");
+    const dob = data.dob instanceof Date ? data.dob : null;
+    const result = await screenName(body.legalName ?? user.name, dob);
+    if (!result.clear) {
+      await recordHitsForKyc(kyc.id, result);
+    }
+  })().catch(() => {});
+
   return c.json({ data: kyc }, 201);
 });
 

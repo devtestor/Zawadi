@@ -114,6 +114,70 @@ router.get("/my/listings", async (c) => {
   return c.json({ data: listings });
 });
 
+// GET /api/me/:id/stats - public trade reputation snapshot for a user.
+router.get("/:id/stats", async (c) => {
+  const { id } = c.req.param();
+  const exists = await prisma.user.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      name: true,
+      role: true,
+      businessName: true,
+      businessType: true,
+      verifiedAt: true,
+      createdAt: true,
+      ratingSum: true,
+      ratingCount: true,
+    },
+  });
+  if (!exists) return c.json({ error: { message: "Not found" } }, 404);
+
+  const TERMINAL_GOOD = ["completed"];
+  const TERMINAL_BAD = ["refunded", "cancelled", "disputed"];
+
+  const [buyerAll, buyerOk, sellerAll, sellerOk, listed] = await Promise.all([
+    prisma.trade.count({ where: { buyerId: id } }),
+    prisma.trade.count({ where: { buyerId: id, status: { in: TERMINAL_GOOD } } }),
+    prisma.trade.count({ where: { sellerId: id } }),
+    prisma.trade.count({ where: { sellerId: id, status: { in: TERMINAL_GOOD } } }),
+    prisma.listing.count({ where: { userId: id, deletedAt: null } }),
+  ]);
+  const buyerDisputed = await prisma.trade.count({
+    where: { buyerId: id, status: { in: TERMINAL_BAD } },
+  });
+  const sellerDisputed = await prisma.trade.count({
+    where: { sellerId: id, status: { in: TERMINAL_BAD } },
+  });
+
+  const pct = (ok: number, all: number) => (all > 0 ? Math.round((ok / all) * 100) : null);
+
+  return c.json({
+    data: {
+      user: exists,
+      // Realtor = business seller of type "agency"
+      realtor: exists.role === "business" && exists.businessType === "agency",
+      listings: listed,
+      buyer: {
+        total: buyerAll,
+        completed: buyerOk,
+        disputed: buyerDisputed,
+        successRate: pct(buyerOk, buyerAll),
+      },
+      seller: {
+        total: sellerAll,
+        completed: sellerOk,
+        disputed: sellerDisputed,
+        successRate: pct(sellerOk, sellerAll),
+      },
+      reviews: {
+        count: exists.ratingCount,
+        average: exists.ratingCount > 0 ? Math.round((exists.ratingSum / exists.ratingCount) * 10) / 10 : null,
+      },
+    },
+  });
+});
+
 // GET /api/me/:id/listings - get public listings by user
 router.get("/:id/listings", async (c) => {
   const { id } = c.req.param();
@@ -234,6 +298,82 @@ router.post("/referral/redeem", zValidator("json", referralRedeemSchema), async 
 
   await prisma.user.update({ where: { id: user.id }, data: { referredById: referrer.id } });
   return c.json({ data: { ok: true } });
+});
+
+// POST /api/me/totp/enroll - returns secret + otpauth URI for the user to scan.
+router.post("/totp/enroll", async (c) => {
+  const user = c.get("user");
+  if (!user) return c.json({ error: { message: "Unauthorized" } }, 401);
+  const { generateSecret, otpAuthUri } = await import("../lib/totp");
+  const secret = generateSecret();
+  await prisma.totpSecret.upsert({
+    where: { userId: user.id },
+    create: { userId: user.id, secret },
+    update: { secret, verifiedAt: null },
+  });
+  return c.json({
+    data: {
+      secret,
+      otpauthUri: otpAuthUri(user.email, secret),
+    },
+  });
+});
+
+// POST /api/me/totp/verify - confirms a code so the secret becomes active.
+router.post("/totp/verify", async (c) => {
+  const user = c.get("user");
+  if (!user) return c.json({ error: { message: "Unauthorized" } }, 401);
+  const body = (await c.req.json().catch(() => ({}))) as { code?: string };
+  const code = (body.code ?? "").trim();
+  if (!/^\d{6}$/.test(code)) return c.json({ error: { message: "Code must be 6 digits" } }, 400);
+  const row = await prisma.totpSecret.findUnique({ where: { userId: user.id } });
+  if (!row) return c.json({ error: { message: "Enroll first" } }, 400);
+  const { verifyTotp } = await import("../lib/totp");
+  if (!(await verifyTotp(row.secret, code))) {
+    return c.json({ error: { message: "Invalid code" } }, 400);
+  }
+  await prisma.totpSecret.update({
+    where: { userId: user.id },
+    data: { verifiedAt: new Date() },
+  });
+  return c.json({ data: { ok: true } });
+});
+
+// DELETE /api/me/totp - disable 2FA (requires a current code).
+router.delete("/totp", async (c) => {
+  const user = c.get("user");
+  if (!user) return c.json({ error: { message: "Unauthorized" } }, 401);
+  const code = c.req.header("x-2fa-code") ?? "";
+  const row = await prisma.totpSecret.findUnique({ where: { userId: user.id } });
+  if (!row || !row.verifiedAt) {
+    await prisma.totpSecret.deleteMany({ where: { userId: user.id } });
+    return c.body(null, 204);
+  }
+  const { verifyTotp } = await import("../lib/totp");
+  if (!(await verifyTotp(row.secret, code))) {
+    return c.json({ error: { message: "Provide a current 2FA code in X-2FA-Code header" } }, 401);
+  }
+  await prisma.totpSecret.delete({ where: { userId: user.id } });
+  return c.body(null, 204);
+});
+
+// POST /api/me/sudo - exchange a current 2FA code for a 5-minute privileged
+// session token (returned in the response and as `X-Sudo` header for sudo-
+// gated routes). 2FA must be enrolled.
+router.post("/sudo", async (c) => {
+  const user = c.get("user");
+  if (!user) return c.json({ error: { message: "Unauthorized" } }, 401);
+  const body = (await c.req.json().catch(() => ({}))) as { code?: string };
+  const code = (body.code ?? "").trim();
+  if (!/^\d{6}$/.test(code)) return c.json({ error: { message: "Code must be 6 digits" } }, 400);
+  const row = await prisma.totpSecret.findUnique({ where: { userId: user.id } });
+  if (!row || !row.verifiedAt) return c.json({ error: { message: "Enable 2FA first" } }, 403);
+  const { verifyTotp } = await import("../lib/totp");
+  if (!(await verifyTotp(row.secret, code))) return c.json({ error: { message: "Invalid code" } }, 401);
+  const { mintSudoToken } = await import("../lib/sudo");
+  const token = await mintSudoToken(user.id);
+  c.header("X-Sudo", token);
+  return c.json({ data: { token, expiresIn: 5 * 60 } });
 });
 
 // PUT /api/me/notifications - update notification + language prefs

@@ -43,3 +43,19 @@ export async function moderateImage(url: string): Promise<ModerationResult> {
     return { safe: true, reasons: [] };
   }
 }
+
+// 16-char fingerprint of an image. Cheap to compute, good enough to catch
+// exact reposts. Swap for a real pHash (sharp/jimp) when you adopt one.
+export async function fingerprintImage(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const buf = await res.arrayBuffer();
+    const digest = await crypto.subtle.digest("SHA-256", buf);
+    return Array.from(new Uint8Array(digest).slice(0, 8))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  } catch {
+    return null;
+  }
+}

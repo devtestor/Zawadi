@@ -3,7 +3,7 @@ import { zValidator } from "@hono/zod-validator";
 import { prisma } from "../prisma";
 import { auth } from "../auth";
 import { env } from "../env";
-import { boostStartSchema } from "../lib/schemas";
+import { boostStartSchema, boostVariantCreateSchema } from "../lib/schemas";
 import { convertFromUSD } from "../lib/fx";
 import { logger } from "../lib/logger";
 
@@ -357,6 +357,54 @@ router.get("/:listingId/variants", async (c) => {
 router.post("/variant/:variantId/click", async (c) => {
   const { variantId } = c.req.param();
   await prisma.boostVariant.update({ where: { id: variantId }, data: { clicks: { increment: 1 } } }).catch(() => {});
+  return c.json({ data: { ok: true } });
+});
+
+// ----- A/B variants -----
+// GET /api/boost/:listingId/variants
+router.get("/:listingId/variants", async (c) => {
+  const user = c.get("user");
+  if (!user) return c.json({ error: { message: "Unauthorized" } }, 401);
+  const { listingId } = c.req.param();
+  const listing = await prisma.listing.findUnique({ where: { id: listingId }, select: { id: true, userId: true } });
+  if (!listing) return c.json({ error: { message: "Not found" } }, 404);
+  if (listing.userId !== user.id) return c.json({ error: { message: "Forbidden" } }, 403);
+  const variants = await prisma.boostVariant.findMany({
+    where: { listingId },
+    orderBy: { createdAt: "asc" },
+  });
+  return c.json({ data: variants });
+});
+
+// POST /api/boost/:listingId/variants  { label: "A"|"B", title }
+router.post("/:listingId/variants", zValidator("json", boostVariantCreateSchema), async (c) => {
+  const user = c.get("user");
+  if (!user) return c.json({ error: { message: "Unauthorized" } }, 401);
+  const { listingId } = c.req.param();
+  const listing = await prisma.listing.findUnique({ where: { id: listingId }, select: { id: true, userId: true } });
+  if (!listing) return c.json({ error: { message: "Not found" } }, 404);
+  if (listing.userId !== user.id) return c.json({ error: { message: "Forbidden" } }, 403);
+
+  const { label, title } = c.req.valid("json");
+  const variant = await prisma.boostVariant.create({
+    data: { listingId, label, title },
+  });
+  return c.json({ data: variant }, 201);
+});
+
+// POST /api/boost/variants/:id/event  { kind: "impression"|"click" }
+router.post("/variants/:id/event", async (c) => {
+  const { id } = c.req.param();
+  const body = (await c.req.json().catch(() => ({}))) as { kind?: "impression" | "click" };
+  if (body.kind !== "impression" && body.kind !== "click") {
+    return c.json({ error: { message: "kind must be impression or click" } }, 400);
+  }
+  await prisma.boostVariant
+    .update({
+      where: { id },
+      data: body.kind === "impression" ? { impressions: { increment: 1 } } : { clicks: { increment: 1 } },
+    })
+    .catch(() => {});
   return c.json({ data: { ok: true } });
 });
 

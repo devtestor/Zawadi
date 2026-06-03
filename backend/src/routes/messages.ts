@@ -25,6 +25,16 @@ const sendSchema = z.object({
 const offerSchema = z.object({
   amount: z.number().positive(),
   currency: z.string().trim().min(3).max(4),
+});
+
+const resolveOfferSchema = z.object({
+  action: z.enum(["accept", "decline", "counter"]),
+  amount: z.number().positive().optional(),
+});
+
+const offerSchema = z.object({
+  amount: z.number().positive(),
+  currency: z.string().trim().min(3).max(4),
   body: z.string().trim().max(2000).optional(),
 });
 
@@ -280,6 +290,111 @@ router.post("/offer/:messageId/resolve", zValidator("json", offerResolveSchema),
     where: { id: messageId },
     data: { offerStatus: action === "accept" ? "accepted" : "declined" },
   });
+  return c.json({ data: { ok: true } });
+});
+
+// POST /api/messages/:id/offer - send a structured offer in a conversation.
+router.post("/:id/offer", zValidator("json", offerSchema), async (c) => {
+  const user = c.get("user");
+  if (!user) return c.json({ error: { message: "Unauthorized" } }, 401);
+
+  const { id } = c.req.param();
+  if (!(await assertParticipant(id, user.id))) {
+    return c.json({ error: { message: "Forbidden" } }, 403);
+  }
+  const { amount, currency } = c.req.valid("json");
+
+  const [msg] = await prisma.$transaction([
+    prisma.message.create({
+      data: {
+        conversationId: id,
+        senderId: user.id,
+        body: `Offered ${currency.toUpperCase()} ${amount.toLocaleString()}`,
+        kind: "offer",
+        offerAmount: amount,
+        offerCurrency: currency.toUpperCase(),
+        offerStatus: "pending",
+      },
+    }),
+    prisma.conversation.update({
+      where: { id },
+      data: { lastMessageAt: new Date() },
+    }),
+  ]);
+
+  prisma.conversationParticipant
+    .findMany({ where: { conversationId: id, NOT: { userId: user.id } }, select: { userId: true } })
+    .then((others) =>
+      Promise.all(
+        others.map((o) =>
+          sendPushToUser(o.userId, {
+            title: `New offer: ${currency.toUpperCase()} ${amount.toLocaleString()}`,
+            body: "Tap to accept, decline or counter.",
+            data: { type: "chat", conversationId: id },
+          }),
+        ),
+      ),
+    )
+    .catch(() => {});
+
+  return c.json({ data: msg }, 201);
+});
+
+// POST /api/messages/offer/:messageId/resolve - accept / decline / counter an offer.
+router.post("/offer/:messageId/resolve", zValidator("json", resolveOfferSchema), async (c) => {
+  const user = c.get("user");
+  if (!user) return c.json({ error: { message: "Unauthorized" } }, 401);
+
+  const { messageId } = c.req.param();
+  const { action, amount } = c.req.valid("json");
+
+  const offer = await prisma.message.findUnique({
+    where: { id: messageId },
+    include: { conversation: { include: { participants: true } } },
+  });
+  if (!offer || offer.kind !== "offer") {
+    return c.json({ error: { message: "Offer not found" } }, 404);
+  }
+  if (offer.offerStatus !== "pending") {
+    return c.json({ error: { message: "Offer already resolved" } }, 400);
+  }
+  const isParticipant = offer.conversation.participants.some((p) => p.userId === user.id);
+  if (!isParticipant) return c.json({ error: { message: "Forbidden" } }, 403);
+  if (offer.senderId === user.id) {
+    return c.json({ error: { message: "You cannot resolve your own offer" } }, 400);
+  }
+
+  const newStatus = action === "accept" ? "accepted" : action === "decline" ? "declined" : "countered";
+  await prisma.message.update({ where: { id: messageId }, data: { offerStatus: newStatus } });
+
+  // For counter, post a fresh offer message from the responder.
+  if (action === "counter" && amount && amount > 0) {
+    await prisma.message.create({
+      data: {
+        conversationId: offer.conversationId,
+        senderId: user.id,
+        body: `Countered with ${offer.offerCurrency} ${amount.toLocaleString()}`,
+        kind: "offer",
+        offerAmount: amount,
+        offerCurrency: offer.offerCurrency,
+        offerStatus: "pending",
+      },
+    });
+  } else {
+    await prisma.message.create({
+      data: {
+        conversationId: offer.conversationId,
+        senderId: user.id,
+        body: action === "accept" ? "Offer accepted ✅" : "Offer declined",
+        kind: "text",
+      },
+    });
+  }
+  await prisma.conversation.update({
+    where: { id: offer.conversationId },
+    data: { lastMessageAt: new Date() },
+  });
+
   return c.json({ data: { ok: true } });
 });
 

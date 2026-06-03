@@ -14,6 +14,11 @@ import { reportsRouter } from "./routes/reports";
 import { adminRouter } from "./routes/admin";
 import { pushTokensRouter } from "./routes/push-tokens";
 import { savedSearchesRouter } from "./routes/saved-searches";
+import { flagsRouter } from "./routes/flags";
+import { webhooksRouter } from "./routes/webhooks";
+import { apiKeysRouter } from "./routes/api-keys";
+import { startWebhookProcessor } from "./lib/webhooks";
+import { startHoldingPeriodScanner } from "./lib/holding-scanner";
 import { walletRouter } from "./routes/wallet";
 import { kycRouter } from "./routes/kyc";
 import { tradesRouter } from "./routes/trades";
@@ -76,7 +81,28 @@ app.use("*", async (c, next) => {
 });
 
 // Auth middleware — also clears the session for banned users.
+// Resolves the caller via, in order: API-key bearer header, then Better-Auth
+// session cookie. API keys are SHA-256 hashed before lookup.
 app.use("*", async (c, next) => {
+  // 1. API key bearer? Bypass the session lookup entirely.
+  const bearer = c.req.header("authorization")?.replace(/^Bearer\s+/i, "");
+  if (bearer && bearer.startsWith("zaw_")) {
+    const hex = await crypto.subtle
+      .digest("SHA-256", new TextEncoder().encode(bearer))
+      .then((b) => Array.from(new Uint8Array(b)).map((x) => x.toString(16).padStart(2, "0")).join(""));
+    const key = await prisma.apiKey.findFirst({
+      where: { hash: hex, revokedAt: null },
+      select: { id: true, user: true },
+    });
+    if (key) {
+      prisma.apiKey.update({ where: { id: key.id }, data: { lastUsedAt: new Date() } }).catch(() => {});
+      c.set("user", key.user as any);
+      c.set("session", null as any);
+      await next();
+      return;
+    }
+  }
+
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
   if (!session) {
     c.set("user", null);
@@ -162,6 +188,9 @@ app.route("/api/reports", reportsRouter);
 app.route("/api/admin", adminRouter);
 app.route("/api/push-tokens", pushTokensRouter);
 app.route("/api/saved-searches", savedSearchesRouter);
+app.route("/api/flags", flagsRouter);
+app.route("/api/webhooks", webhooksRouter);
+app.route("/api/me/api-keys", apiKeysRouter);
 app.route("/api/wallet", walletRouter);
 app.route("/api/kyc", kycRouter);
 app.route("/api/trades", tradesRouter);
@@ -215,13 +244,6 @@ app.get("/api/chain", async (c) => {
       explorer: env.CHAIN_EXPLORER_BASE_URL || null,
     },
   });
-});
-
-// GET /api/flags - per-user feature flag map
-app.get("/api/flags", async (c) => {
-  const user = c.get("user");
-  const { allFlagsFor } = await import("./lib/flags");
-  return c.json({ data: await allFlagsFor(user?.id) });
 });
 
 // Public-records verification (currently fixture-only).
@@ -317,6 +339,8 @@ app.onError((err, c) => {
 
 installGlobalErrorHandlers();
 startSavedSearchScanner();
+startWebhookProcessor();
+startHoldingPeriodScanner();
 startAuctionScanner();
 
 const port = parseInt(env.PORT);

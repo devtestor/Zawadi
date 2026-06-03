@@ -8,6 +8,9 @@ import { makeLimiter } from "../lib/rate-limit";
 import { sendPushToUser } from "../lib/push";
 import { env } from "../env";
 import { convertFromUSD } from "../lib/fx";
+import { fingerprintImage, moderateImage } from "../lib/moderation";
+import { logger } from "../lib/logger";
+import { verifyMiningLicense, verifyLandDeed } from "../lib/records";
 
 const createLimiter = makeLimiter({ capacity: 8, windowMs: 60 * 60 * 1000 });
 const businessCreateLimiter = makeLimiter({ capacity: 50, windowMs: 60 * 60 * 1000 });
@@ -196,14 +199,39 @@ router.post("/", zValidator("json", listingCreateSchema), async (c) => {
     include: { images: true },
   });
 
-  // Duplicate detection — fire and forget.
-  const hashes = (images || [])
-    .map((e) => (typeof e === "string" ? null : e.pHash))
-    .filter((h): h is string => !!h);
-  if (hashes.length) {
-    (async () => {
+  // Server-side fingerprint + moderation. Fire-and-forget so the client isn't
+  // blocked on slow third-party calls. Client-supplied pHashes (if any) are
+  // honored; otherwise we hash from the URL.
+  (async () => {
+    let unsafe = false;
+    const collectedHashes: string[] = [];
+    for (const img of listing.images) {
+      const [hash, mod] = await Promise.all([
+        img.pHash ? Promise.resolve(img.pHash) : fingerprintImage(img.url),
+        moderateImage(img.url),
+      ]);
+      if ((hash && hash !== img.pHash) || !mod.safe) {
+        await prisma.listingImage
+          .update({
+            where: { id: img.id },
+            data: {
+              pHash: hash ?? undefined,
+              moderation: mod.safe ? undefined : JSON.stringify(mod),
+            },
+          })
+          .catch(() => {});
+      }
+      if (hash) collectedHashes.push(hash);
+      if (!mod.safe) {
+        unsafe = true;
+        logger.warn("image flagged", { listingId: listing.id, imageId: img.id, reasons: mod.reasons });
+      }
+    }
+
+    // Duplicate detection across all collected hashes.
+    if (collectedHashes.length) {
       const matches = await prisma.listingImage.findMany({
-        where: { pHash: { in: hashes }, listingId: { not: listing.id } },
+        where: { pHash: { in: collectedHashes }, listingId: { not: listing.id } },
         select: { listingId: true },
         take: 20,
       });
@@ -217,15 +245,19 @@ router.post("/", zValidator("json", listingCreateSchema), async (c) => {
           })
           .catch(() => {});
       }
-      // If we found duplicates, flag for review.
-      if (originalIds.length > 0) {
+      if (originalIds.length > 0 || unsafe) {
         await prisma.listing.update({
           where: { id: listing.id },
-          data: { underReview: true, status: "pending" },
+          data: { underReview: true, status: "pending", approvedAt: null },
         });
       }
-    })();
-  }
+    } else if (unsafe) {
+      await prisma.listing.update({
+        where: { id: listing.id },
+        data: { underReview: true, status: "pending", approvedAt: null },
+      });
+    }
+  })().catch((e) => logger.warn("post-publish moderation failed", { err: String(e) }));
 
   return c.json({ data: listing }, 201);
 });
@@ -375,6 +407,27 @@ router.get("/:id/analytics", async (c) => {
       },
     },
   });
+});
+
+// GET /api/listings/:id/records — verify the listing's regulator-issued
+// document (mining licence or land title) against an external registry.
+router.get("/:id/records", async (c) => {
+  const { id } = c.req.param();
+  const l = await prisma.listing.findUnique({
+    where: { id },
+    select: { id: true, category: true, country: true, miningLicense: true, address: true, deletedAt: true },
+  });
+  if (!l || l.deletedAt) return c.json({ error: { message: "Not found" } }, 404);
+
+  if (l.category === "mining" && l.miningLicense) {
+    const result = await verifyMiningLicense(l.miningLicense);
+    return c.json({ data: { kind: "mining_license", value: l.miningLicense, ...result } });
+  }
+  if (l.category === "land") {
+    const result = await verifyLandDeed(l.country, l.address ?? "");
+    return c.json({ data: { kind: "land_title", value: l.address ?? "", ...result } });
+  }
+  return c.json({ data: { kind: null, status: "unknown" as const } });
 });
 
 export { router as listingsRouter };

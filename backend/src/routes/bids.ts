@@ -5,6 +5,8 @@ import { auth } from "../auth";
 import { auctionConfigSchema, bidSchema } from "../lib/schemas";
 import { env } from "../env";
 import { sendPushToUser } from "../lib/push";
+import { getOrCreateWallet, postEntry } from "../lib/wallet";
+import { logger } from "../lib/logger";
 
 type Variables = {
   user: typeof auth.$Infer.Session.user | null;
@@ -101,11 +103,56 @@ router.post("/listing/:listingId", zValidator("json", bidSchema), async (c) => {
     return c.json({ error: { message: "maxAmount must be >= amount" } }, 400);
   }
 
-  // Mark prior top bid as outbid.
+  // Check the bidder has enough free balance to cover the bid.
+  const bidderWallet = await getOrCreateWallet(user.id, listing.currency.toUpperCase());
+  if (bidderWallet.balance < amount) {
+    return c.json(
+      {
+        error: {
+          message: `Insufficient wallet balance to back this bid. Top up at least ${listing.currency} ${(amount / 100).toFixed(2)} first.`,
+        },
+      },
+      402,
+    );
+  }
+
+  // Mark prior top bid as outbid (and refund their hold), place the new bid
+  // with an escrow hold.
   const bid = await prisma.$transaction(async (tx) => {
     if (top) {
       await tx.bid.update({ where: { id: top.id }, data: { status: "outbid" } });
+      if (top.holdTxnId) {
+        // Refund the prior top bidder's hold.
+        const prevWallet = await tx.wallet.findUnique({ where: { userId: top.bidderId } });
+        if (prevWallet) {
+          await postEntry(tx, {
+            walletId: prevWallet.id,
+            kind: "escrow_refund",
+            amount: top.amount,
+            currency: prevWallet.currency,
+            refType: "external",
+            refId: top.id,
+            description: `Refund — outbid on listing ${listingId}`,
+          });
+        }
+      }
     }
+
+    // Hold the new bid amount.
+    await postEntry(tx, {
+      walletId: bidderWallet.id,
+      kind: "escrow_hold",
+      amount,
+      currency: bidderWallet.currency,
+      refType: "external",
+      refId: undefined,
+      description: `Bid hold on listing ${listingId}`,
+    });
+    const holdTxn = await tx.walletTxn.findFirst({
+      where: { walletId: bidderWallet.id, kind: "escrow_hold" },
+      orderBy: { createdAt: "desc" },
+    });
+
     return tx.bid.create({
       data: {
         listingId,
@@ -113,9 +160,89 @@ router.post("/listing/:listingId", zValidator("json", bidSchema), async (c) => {
         amount,
         currency: listing.currency.toUpperCase(),
         maxAmount: maxAmount ?? null,
+        holdTxnId: holdTxn?.id ?? null,
       },
     });
   });
+
+  // --- Proxy bidding ---
+  // If any earlier bidder still has a maxAmount > the new top, auto-raise them
+  // by one increment up to (a) their own maxAmount and (b) just above the
+  // current top. We keep iterating until no eligible auto-bidder remains.
+  // The new bid we just placed counts as the current top.
+  let currentTop = bid;
+  while (true) {
+    const challenger = await prisma.bid.findFirst({
+      where: {
+        listingId,
+        status: "outbid",
+        bidderId: { not: currentTop.bidderId },
+        maxAmount: { gt: currentTop.amount },
+      },
+      orderBy: [{ maxAmount: "desc" }, { createdAt: "asc" }],
+    });
+    if (!challenger || !challenger.maxAmount) break;
+    const inc = listing.bidIncrement ?? 100;
+    const proposed = Math.min(challenger.maxAmount, currentTop.amount + inc);
+    if (proposed <= currentTop.amount) break;
+
+    // Need available balance to back the auto-raise (subtract their existing hold).
+    const cWallet = await getOrCreateWallet(challenger.bidderId, listing.currency.toUpperCase());
+    const free = cWallet.balance + (challenger.holdTxnId ? challenger.amount : 0);
+    if (free < proposed) {
+      // Skip and rank them as rejected so they're not retried in an infinite loop.
+      await prisma.bid.update({ where: { id: challenger.id }, data: { status: "withdrawn" } });
+      continue;
+    }
+
+    // Step 1: refund their old hold. Step 2: hold the new amount. Step 3:
+    // mark current top as outbid + create the auto-raise as a new bid.
+    const replacement = await prisma.$transaction(async (tx) => {
+      if (challenger.holdTxnId) {
+        await postEntry(tx, {
+          walletId: cWallet.id,
+          kind: "escrow_refund",
+          amount: challenger.amount,
+          currency: cWallet.currency,
+          refType: "external",
+          refId: challenger.id,
+          description: "Proxy bid — refund prior amount",
+        });
+      }
+      await postEntry(tx, {
+        walletId: cWallet.id,
+        kind: "escrow_hold",
+        amount: proposed,
+        currency: cWallet.currency,
+        refType: "external",
+        refId: undefined,
+        description: `Proxy bid hold on listing ${listingId}`,
+      });
+      const holdTxn = await tx.walletTxn.findFirst({
+        where: { walletId: cWallet.id, kind: "escrow_hold" },
+        orderBy: { createdAt: "desc" },
+      });
+      await tx.bid.update({ where: { id: currentTop.id }, data: { status: "outbid" } });
+      return tx.bid.create({
+        data: {
+          listingId,
+          bidderId: challenger.bidderId,
+          amount: proposed,
+          currency: cWallet.currency,
+          maxAmount: challenger.maxAmount,
+          holdTxnId: holdTxn?.id ?? null,
+          status: "active",
+        },
+      });
+    });
+    currentTop = replacement;
+    sendPushToUser(currentTop.bidderId, {
+      title: "Proxy bid placed",
+      body: `Your max bid was used to outbid — now at ${listing.currency} ${(currentTop.amount / 100).toFixed(2)}.`,
+      data: { type: "bid", listingId },
+      kind: "chat",
+    }).catch(() => {});
+  }
 
   // Notify the previous high bidder + the seller.
   if (top && top.bidderId !== user.id) {
@@ -149,9 +276,24 @@ router.post("/:id/withdraw", async (c) => {
   if (bid.listing.auctionEndsAt && bid.listing.auctionEndsAt.getTime() <= Date.now()) {
     return c.json({ error: { message: "Auction has ended" } }, 400);
   }
-  await prisma.bid.update({ where: { id }, data: { status: "withdrawn" } });
-  // Promote the next-highest active bid back into the running.
-  // (We don't reverse `outbid` automatically — the next active bid is already the new top.)
+  // Refund the bidder's hold, mark withdrawn.
+  await prisma.$transaction(async (tx) => {
+    if (bid.holdTxnId) {
+      const w = await tx.wallet.findUnique({ where: { userId: bid.bidderId } });
+      if (w) {
+        await postEntry(tx, {
+          walletId: w.id,
+          kind: "escrow_refund",
+          amount: bid.amount,
+          currency: w.currency,
+          refType: "external",
+          refId: bid.id,
+          description: "Bid withdrawn",
+        });
+      }
+    }
+    await tx.bid.update({ where: { id }, data: { status: "withdrawn" } });
+  });
   return c.json({ data: { ok: true } });
 });
 
@@ -180,7 +322,9 @@ export async function closeAuctionsOnce(now = Date.now()): Promise<number> {
       await prisma.bid.update({ where: { id: top.id }, data: { status: "rejected" } });
       continue;
     }
-    // Winner — create a Trade in `initiated` so the buyer can fund it.
+    // Winner — convert the bid's existing hold into the trade's escrow. The
+    // hold is already on pendingDebit, so we don't post a second escrow_hold;
+    // we just relabel it via a note and create the trade in `in_escrow`.
     await prisma.$transaction(async (tx) => {
       const trade = await tx.trade.create({
         data: {
@@ -189,13 +333,53 @@ export async function closeAuctionsOnce(now = Date.now()): Promise<number> {
           sellerId: listing.userId,
           amount: top.amount,
           currency: top.currency,
-          status: "initiated",
+          status: top.holdTxnId ? "in_escrow" : "initiated",
+          fundedAt: top.holdTxnId ? new Date() : null,
+          escrowedAt: top.holdTxnId ? new Date() : null,
           bidId: top.id,
         },
       });
       await tx.bid.update({ where: { id: top.id }, data: { status: "won" } });
-      await tx.tradeEvent.create({ data: { tradeId: trade.id, kind: "initiated", note: "auction_won" } });
+      await tx.tradeEvent.create({
+        data: {
+          tradeId: trade.id,
+          kind: top.holdTxnId ? "in_escrow" : "initiated",
+          note: "auction_won",
+        },
+      });
+      if (top.holdTxnId) {
+        // Re-link the original hold txn to the new trade ref for the audit trail.
+        await tx.walletTxn.update({
+          where: { id: top.holdTxnId },
+          data: { refType: "trade", refId: trade.id, description: "Bid hold converted to trade escrow" },
+        });
+      }
     });
+    // Refund every loser still active for this listing.
+    const losers = await prisma.bid.findMany({
+      where: { listingId: listing.id, status: { in: ["active", "outbid"] }, holdTxnId: { not: null } },
+      select: { id: true, amount: true, currency: true, bidderId: true, holdTxnId: true },
+    });
+    for (const loser of losers) {
+      try {
+        const w = await prisma.wallet.findUnique({ where: { userId: loser.bidderId } });
+        if (!w) continue;
+        await prisma.$transaction(async (tx) => {
+          await postEntry(tx, {
+            walletId: w.id,
+            kind: "escrow_refund",
+            amount: loser.amount,
+            currency: w.currency,
+            refType: "external",
+            refId: loser.id,
+            description: "Bid refund — auction ended",
+          });
+          await tx.bid.update({ where: { id: loser.id }, data: { status: "rejected" } });
+        });
+      } catch (e) {
+        logger.warn("loser refund failed", { bidId: loser.id, err: e instanceof Error ? e.message : String(e) });
+      }
+    }
     closed += 1;
     sendPushToUser(top.bidderId, {
       title: "You won the auction",
