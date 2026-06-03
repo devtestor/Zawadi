@@ -1,0 +1,136 @@
+# Production stack: Caddy (TLS + reverse proxy) + backend + Postgres.
+# Pulls the backend image from GitHub Container Registry rather than rebuilding
+# on the VPS — the CI workflow at .github/workflows/deploy.yml pushes the
+# image and SSHes in to run `docker compose pull && up`.
+#
+# Required env on the VPS (in /opt/zawadi/.env):
+#   DOMAIN              your public hostname, e.g. api.zawadi.app
+#   IMAGE_TAG           image to deploy (default: latest)
+#   GITHUB_REPO         e.g. devtestor/Zawadi (case-sensitive)
+#   POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB
+#   BETTER_AUTH_SECRET, RESEND_API_KEY
+#   ... all the optional integration keys (Pesapal, Sightengine, etc.)
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      DOMAIN: ${DOMAIN}
+    depends_on:
+      - backend
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    image: ghcr.io/${GITHUB_REPO}/backend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?schema=public
+      BACKEND_URL: https://${DOMAIN}
+      ALLOWED_ORIGINS: https://${DOMAIN},https://*.${DOMAIN}
+      APP_SCHEMES: zawadi://
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Email
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      EMAIL_FROM: ${EMAIL_FROM:-ZAWADI <onboarding@resend.dev>}
+      # Storage
+      STORAGE_PROVIDER: s3
+      S3_REGION: ${S3_REGION:-auto}
+      S3_BUCKET: ${S3_BUCKET}
+      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+      S3_PUBLIC_URL: ${S3_PUBLIC_URL}
+      # SMS / WhatsApp
+      WHATSAPP_PHONE_ID: ${WHATSAPP_PHONE_ID:-}
+      WHATSAPP_TOKEN: ${WHATSAPP_TOKEN:-}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM: ${TWILIO_FROM:-}
+      # Pesapal
+      PESAPAL_CONSUMER_KEY: ${PESAPAL_CONSUMER_KEY}
+      PESAPAL_CONSUMER_SECRET: ${PESAPAL_CONSUMER_SECRET}
+      PESAPAL_BASE_URL: ${PESAPAL_BASE_URL:-https://pay.pesapal.com/v3}
+      PESAPAL_CURRENCY: ${PESAPAL_CURRENCY:-KES}
+      PESAPAL_IPN_ID: ${PESAPAL_IPN_ID:-}
+      # Optional integrations
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      SIGHTENGINE_USER: ${SIGHTENGINE_USER:-}
+      SIGHTENGINE_SECRET: ${SIGHTENGINE_SECRET:-}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
+      LIVEKIT_URL: ${LIVEKIT_URL:-}
+      IPINFO_TOKEN: ${IPINFO_TOKEN:-}
+      SANCTIONS_PROVIDER: ${SANCTIONS_PROVIDER:-none}
+      OPENSANCTIONS_API_KEY: ${OPENSANCTIONS_API_KEY:-}
+      # Policy
+      HIGH_VALUE_USD: ${HIGH_VALUE_USD:-500000}
+      KYC_REQUIRED_OVER_USD: ${KYC_REQUIRED_OVER_USD:-1000}
+      TWOFA_REQUIRED_OVER_USD: ${TWOFA_REQUIRED_OVER_USD:-5000}
+      HOLDING_PERIOD_DAYS: ${HOLDING_PERIOD_DAYS:-3}
+      PLATFORM_FEE_BPS: ${PLATFORM_FEE_BPS:-250}
+      WALLET_DEFAULT_CURRENCY: ${WALLET_DEFAULT_CURRENCY:-USD}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Nightly Postgres backup at 02:00 UTC, keeps the last 14 days.
+  db_backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./backups:/backups
+    entrypoint: >
+      sh -c "
+      apk add --no-cache tini >/dev/null 2>&1 || true;
+      while true; do
+        sleep $$(awk 'BEGIN{srand(); print int(86400 - (systime()%86400))}');
+        TS=$$(date -u +%Y%m%d-%H%M%S);
+        pg_dump -h db -U $$POSTGRES_USER $$POSTGRES_DB | gzip > /backups/zawadi-$$TS.sql.gz || true;
+        find /backups -type f -name 'zawadi-*.sql.gz' -mtime +14 -delete || true;
+      done"
+
+volumes:
+  db_data:
+  caddy_data:
+  caddy_config:
