@@ -22,17 +22,30 @@ if [ -n "${GHCR_TOKEN:-}" ] && [ -n "${GHCR_USER:-}" ]; then
   echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
 fi
 
-docker compose -f docker-compose.prod.yml pull backend
+docker compose -f docker-compose.prod.yml pull backend web
 docker compose -f docker-compose.prod.yml up -d --remove-orphans
 
 echo "Waiting for /health…"
 for i in $(seq 1 30); do
-  if curl -fsS "https://${DOMAIN}/health" >/dev/null 2>&1; then
-    echo "✅ healthy at https://${DOMAIN}"
-    exit 0
+  if curl -fsS "https://${API_DOMAIN}/health" >/dev/null 2>&1; then
+    echo "✅ API healthy at https://${API_DOMAIN}"
+    break
   fi
   sleep 2
+  if [ "$i" = "30" ]; then
+    echo "❌ Backend did not become healthy in 60s" >&2
+    docker compose -f docker-compose.prod.yml logs --tail=80 backend
+    exit 1
+  fi
 done
-echo "❌ Backend did not become healthy in 60s" >&2
-docker compose -f docker-compose.prod.yml logs --tail=80 backend
-exit 1
+
+if [ -n "${WEB_DOMAIN:-}" ]; then
+  for i in $(seq 1 30); do
+    if curl -fsS -o /dev/null "https://${WEB_DOMAIN}/"; then
+      echo "✅ Web up at https://${WEB_DOMAIN}"
+      exit 0
+    fi
+    sleep 2
+  done
+  echo "⚠️ Web not responding yet — check 'docker compose logs web caddy'"
+fi

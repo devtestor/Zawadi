@@ -1,0 +1,15 @@
+node_modules
+.expo
+.expo-shared
+dist
+web-build
+.git
+.gitignore
+ios
+android
+.env
+.env.*
+!.env.example
+expo.log
+Dockerfile.web
+.dockerignore

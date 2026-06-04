@@ -57,7 +57,8 @@ chown -R "$DEPLOY_USER":"$DEPLOY_USER" "$APP_DIR"
 if [ ! -f "$APP_DIR/.env" ]; then
   cat > "$APP_DIR/.env" <<'ENV'
 # Fill these in then run scripts/deploy.sh manually for the first deploy.
-DOMAIN=api.zawadi.app
+API_DOMAIN=api.zawadi.app
+WEB_DOMAIN=zawadi.app
 GITHUB_REPO=devtestor/Zawadi
 IMAGE_TAG=latest
 POSTGRES_USER=zawadi

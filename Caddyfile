@@ -1,11 +1,8 @@
-# Reverse-proxy + automatic Let's Encrypt for the API.
-# `{$DOMAIN}` is templated from the compose env so the same file works for
-# any deployment.
+# Reverse-proxy + automatic Let's Encrypt for the API + Web hosts.
+# Hostnames are templated from compose env so the same file works for any
+# deployment.
 
-{$DOMAIN} {
-  encode zstd gzip
-
-  # Security headers
+(common_headers) {
   header {
     Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
     X-Content-Type-Options "nosniff"
@@ -13,8 +10,13 @@
     Permissions-Policy "geolocation=(self), microphone=()"
     -Server
   }
+}
 
-  # Cap upload sizes at the edge so leaked stack traces don't carry payloads.
+# --- API ---
+{$API_DOMAIN} {
+  encode zstd gzip
+  import common_headers
+
   request_body {
     max_size 12MB
   }
@@ -24,6 +26,19 @@
     health_interval 10s
     health_timeout 3s
   }
+
+  log {
+    output stdout
+    format console
+  }
+}
+
+# --- Web (Expo static export) ---
+{$WEB_DOMAIN} {
+  encode zstd gzip
+  import common_headers
+
+  reverse_proxy web:80
 
   log {
     output stdout

@@ -4,7 +4,8 @@
 # image and SSHes in to run `docker compose pull && up`.
 #
 # Required env on the VPS (in /opt/zawadi/.env):
-#   DOMAIN              your public hostname, e.g. api.zawadi.app
+#   API_DOMAIN          backend hostname, e.g. api.zawadi.app
+#   WEB_DOMAIN          web hostname, e.g. zawadi.app
 #   IMAGE_TAG           image to deploy (default: latest)
 #   GITHUB_REPO         e.g. devtestor/Zawadi (case-sensitive)
 #   POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB
@@ -23,9 +24,15 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     environment:
-      DOMAIN: ${DOMAIN}
+      API_DOMAIN: ${API_DOMAIN}
+      WEB_DOMAIN: ${WEB_DOMAIN}
     depends_on:
       - backend
+      - web
+
+  web:
+    image: ghcr.io/${GITHUB_REPO}/web:${IMAGE_TAG:-latest}
+    restart: unless-stopped
 
   db:
     image: postgres:16-alpine
@@ -54,8 +61,8 @@ services:
       PORT: "3000"
       DATABASE_PROVIDER: postgresql
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?schema=public
-      BACKEND_URL: https://${DOMAIN}
-      ALLOWED_ORIGINS: https://${DOMAIN},https://*.${DOMAIN}
+      BACKEND_URL: https://${API_DOMAIN}
+      ALLOWED_ORIGINS: https://${WEB_DOMAIN},https://*.${WEB_DOMAIN},https://${API_DOMAIN}
       APP_SCHEMES: zawadi://
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
       LOG_LEVEL: ${LOG_LEVEL:-info}

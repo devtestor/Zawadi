@@ -1,0 +1,40 @@
+# Build the Expo web export, then ship it inside Caddy for static serving.
+# Used by docker-compose.prod.yml as the `web` service. The container only
+# serves files — TLS is terminated by the outer Caddy reverse-proxy.
+
+# ---- build ----
+FROM oven/bun:1.1-alpine AS build
+WORKDIR /app
+RUN apk add --no-cache git python3 make g++
+
+# Install dependencies first for better cache reuse.
+COPY package.json bun.lock ./
+COPY patches ./patches
+RUN bun install --frozen-lockfile
+
+# Backend URL gets baked into the JS bundle, so it must be supplied at build
+# time. CI passes this from a repo variable; bootstrap defaults to localhost.
+ARG EXPO_PUBLIC_BACKEND_URL=http://localhost:3000
+ENV EXPO_PUBLIC_BACKEND_URL=$EXPO_PUBLIC_BACKEND_URL
+
+# Copy the rest and emit a static web export.
+COPY . .
+ENV NODE_ENV=production
+RUN bunx expo export --platform web --output-dir dist
+
+# ---- runtime ----
+FROM caddy:2-alpine AS runtime
+COPY --from=build /app/dist /srv
+# Tiny Caddyfile: SPA fallback to index.html, gzip, long cache on hashed assets.
+RUN cat > /etc/caddy/Caddyfile <<'EOF'
+:80 {
+  root * /srv
+  encode zstd gzip
+  @assets path *.js *.css *.png *.jpg *.jpeg *.gif *.svg *.woff *.woff2 *.ttf *.ico
+  header @assets Cache-Control "public, max-age=31536000, immutable"
+  header /index.html Cache-Control "no-cache"
+  try_files {path} /index.html
+  file_server
+}
+EOF
+EXPOSE 80
