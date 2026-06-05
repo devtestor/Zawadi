@@ -13,7 +13,7 @@ import {
   Share,
   Platform,
 } from "react-native";
-import MapView, { Marker, PROVIDER_DEFAULT } from "react-native-maps";
+import MapView, { Marker, PROVIDER_DEFAULT } from "@/lib/maps";
 import { Galeria } from "@nandorojo/galeria";
 import { useLocalSearchParams, router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
