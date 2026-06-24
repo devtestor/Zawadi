@@ -3,9 +3,13 @@
 # serves files — TLS is terminated by the outer Caddy reverse-proxy.
 
 # ---- build ----
-FROM oven/bun:1.1-alpine AS build
+# Debian-slim base for the build stage — apt mirrors are far more reliable
+# than dl-cdn.alpinelinux.org which intermittently 5xxs.
+FROM oven/bun:1.2-slim AS build
 WORKDIR /app
-RUN apk add --no-cache git python3 make g++
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      git python3 make g++ ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install dependencies first for better cache reuse.
 COPY package.json bun.lock ./
@@ -23,6 +27,8 @@ ENV NODE_ENV=production
 RUN bunx expo export --platform web --output-dir dist
 
 # ---- runtime ----
+# Caddy stays on Alpine — the runtime is cached/pulled, not built, so the
+# transient apk issue doesn't apply here.
 FROM caddy:2-alpine AS runtime
 COPY --from=build /app/dist /srv
 # Tiny Caddyfile: SPA fallback to index.html, gzip, long cache on hashed assets.

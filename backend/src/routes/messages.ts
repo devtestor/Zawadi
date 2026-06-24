@@ -25,20 +25,10 @@ const sendSchema = z.object({
 const offerSchema = z.object({
   amount: z.number().positive(),
   currency: z.string().trim().min(3).max(4),
-});
-
-const resolveOfferSchema = z.object({
-  action: z.enum(["accept", "decline", "counter"]),
-  amount: z.number().positive().optional(),
-});
-
-const offerSchema = z.object({
-  amount: z.number().positive(),
-  currency: z.string().trim().min(3).max(4),
   body: z.string().trim().max(2000).optional(),
 });
 
-const offerResolveSchema = z.object({
+const resolveOfferSchema = z.object({
   action: z.enum(["accept", "decline", "counter"]),
   amount: z.number().positive().optional(),
 });
@@ -226,69 +216,6 @@ router.post("/:id/read", async (c) => {
   await prisma.conversationParticipant.update({
     where: { conversationId_userId: { conversationId: id, userId: user.id } },
     data: { lastReadAt: new Date() },
-  });
-  return c.json({ data: { ok: true } });
-});
-
-// POST /api/messages/:id/offer - send a structured price offer.
-router.post("/:id/offer", zValidator("json", offerSchema), async (c) => {
-  const user = c.get("user");
-  if (!user) return c.json({ error: { message: "Unauthorized" } }, 401);
-  const { id } = c.req.param();
-  if (!(await assertParticipant(id, user.id))) return c.json({ error: { message: "Forbidden" } }, 403);
-
-  const { amount, currency, body } = c.req.valid("json");
-  const msg = await prisma.message.create({
-    data: {
-      conversationId: id,
-      senderId: user.id,
-      body: body ?? `Offered ${currency.toUpperCase()} ${amount.toLocaleString()}`,
-      kind: "offer",
-      offerAmount: amount,
-      offerCurrency: currency.toUpperCase(),
-      offerStatus: "pending",
-    },
-  });
-  await prisma.conversation.update({ where: { id }, data: { lastMessageAt: new Date() } });
-  return c.json({ data: msg }, 201);
-});
-
-// POST /api/messages/offer/:messageId/resolve - accept / decline / counter an offer.
-router.post("/offer/:messageId/resolve", zValidator("json", offerResolveSchema), async (c) => {
-  const user = c.get("user");
-  if (!user) return c.json({ error: { message: "Unauthorized" } }, 401);
-
-  const { messageId } = c.req.param();
-  const msg = await prisma.message.findUnique({ where: { id: messageId } });
-  if (!msg || msg.kind !== "offer") return c.json({ error: { message: "Not an offer" } }, 404);
-  if (!(await assertParticipant(msg.conversationId, user.id))) return c.json({ error: { message: "Forbidden" } }, 403);
-  if (msg.senderId === user.id) return c.json({ error: { message: "Only the recipient can resolve an offer" } }, 400);
-
-  const { action, amount } = c.req.valid("json");
-
-  if (action === "counter") {
-    if (!amount) return c.json({ error: { message: "Counter requires an amount" } }, 400);
-    await prisma.$transaction([
-      prisma.message.update({ where: { id: messageId }, data: { offerStatus: "countered" } }),
-      prisma.message.create({
-        data: {
-          conversationId: msg.conversationId,
-          senderId: user.id,
-          body: `Counter offer: ${msg.offerCurrency} ${amount.toLocaleString()}`,
-          kind: "offer",
-          offerAmount: amount,
-          offerCurrency: msg.offerCurrency,
-          offerStatus: "pending",
-        },
-      }),
-      prisma.conversation.update({ where: { id: msg.conversationId }, data: { lastMessageAt: new Date() } }),
-    ]);
-    return c.json({ data: { ok: true } });
-  }
-
-  await prisma.message.update({
-    where: { id: messageId },
-    data: { offerStatus: action === "accept" ? "accepted" : "declined" },
   });
   return c.json({ data: { ok: true } });
 });

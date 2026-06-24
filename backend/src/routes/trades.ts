@@ -13,11 +13,9 @@ import { computeTax } from "../lib/tax";
 import { emailReceiptToParties } from "../lib/receipts";
 import { makeLimiter } from "../lib/rate-limit";
 import { emitWebhook } from "../lib/webhooks";
+import { withIdempotency } from "../lib/idempotency";
 
 const tradeLimiter = makeLimiter({ capacity: 10, windowMs: 60 * 60 * 1000 });
-
-import { withIdempotency } from "../lib/idempotency";
-router.use("*", withIdempotency());
 
 type Variables = {
   user: typeof auth.$Infer.Session.user | null;
@@ -25,6 +23,7 @@ type Variables = {
 };
 
 const router = new Hono<{ Variables: Variables }>();
+router.use("*", withIdempotency());
 
 const TERMINAL = new Set(["completed", "refunded", "cancelled"]);
 
