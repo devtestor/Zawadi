@@ -27,6 +27,7 @@ import { bidsRouter } from "./routes/bids";
 import { prisma } from "./prisma";
 import { startSavedSearchScanner } from "./lib/saved-search-scanner";
 import { startAuctionScanner } from "./lib/auction-scanner";
+import { internalCronRouter } from "./routes/internal-cron";
 
 import type { Logger } from "./lib/logger";
 
@@ -196,6 +197,7 @@ app.route("/api/kyc", kycRouter);
 app.route("/api/trades", tradesRouter);
 app.route("/api/contracts", contractsRouter);
 app.route("/api/bids", bidsRouter);
+app.route("/api/internal/cron", internalCronRouter);
 
 // Start (or rejoin) a LiveKit video room scoped to a chat conversation. Drops a
 // "video-room" message into the chat so both parties can join.
@@ -338,13 +340,22 @@ app.onError((err, c) => {
 });
 
 installGlobalErrorHandlers();
-startSavedSearchScanner();
-startWebhookProcessor();
-startHoldingPeriodScanner();
-startAuctionScanner();
+
+// Background workers: only when self-hosting (Bun/Docker/VPS).
+// On Vercel the same logic runs via Cron hitting /api/internal/cron/*.
+if (!process.env.VERCEL) {
+  startSavedSearchScanner();
+  startWebhookProcessor();
+  startHoldingPeriodScanner();
+  startAuctionScanner();
+}
 
 const port = parseInt(env.PORT);
-logger.info("server started", { port, env: env.NODE_ENV });
+if (!process.env.VERCEL) {
+  logger.info("server started", { port, env: env.NODE_ENV });
+}
+
+export { app };
 
 export default {
   port,

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "cp prisma/schema.postgresql.prisma prisma/schema.prisma && bunx prisma generate && bunx prisma db push --accept-data-loss --skip-generate",
+  "installCommand": "bun install --frozen-lockfile",
+  "framework": null,
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/api" }
+  ],
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 30,
+      "memory": 1024
+    }
+  },
+  "crons": [
+    { "path": "/api/internal/cron/webhooks",     "schedule": "*/2 * * * *" },
+    { "path": "/api/internal/cron/holding",      "schedule": "*/5 * * * *" },
+    { "path": "/api/internal/cron/auction",      "schedule": "*/2 * * * *" },
+    { "path": "/api/internal/cron/saved-search", "schedule": "*/15 * * * *" },
+    { "path": "/api/internal/cron/daily-digest", "schedule": "0 8 * * *" }
+  ]
+}
