@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { View, Text, StatusBar, Pressable, ActivityIndicator } from "react-native";
-import MapView, { Marker, Region } from "react-native-maps";
+import MapView, { Marker, Region } from "@/lib/maps";
 import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";

@@ -89,6 +89,10 @@ async function releaseOne(tradeId: string): Promise<void> {
   emitWebhook("trade.completed", { tradeId: trade.id, source: "auto_release" }).catch(() => {});
 }
 
+export async function runHoldingTick(): Promise<void> {
+  return tick();
+}
+
 async function tick(): Promise<void> {
   const now = new Date();
   const due = await prisma.trade.findMany({

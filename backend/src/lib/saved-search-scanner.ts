@@ -10,6 +10,14 @@ import { env } from "../env";
 
 const INTERVAL_MS = 10 * 60 * 1000;
 
+export async function runSavedSearchScan(): Promise<void> {
+  return scanOnce();
+}
+
+export async function runDailyDigest(): Promise<void> {
+  return dailyDigest();
+}
+
 async function scanOnce(): Promise<void> {
   const searches = await prisma.savedSearch.findMany();
   const now = new Date();

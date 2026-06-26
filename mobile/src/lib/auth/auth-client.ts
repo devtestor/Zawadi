@@ -1,5 +1,5 @@
 // Custom auth client that bypasses better-auth package (Metro .mjs resolution issue)
-import * as SecureStore from "expo-secure-store";
+import * as SecureStore from "@/lib/secure-store";
 import { fetch, type FetchRequestInit } from "expo/fetch";
 
 const COOKIE_KEY = "zawadi_auth_cookie";

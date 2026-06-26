@@ -18,7 +18,6 @@ import { api } from "@/lib/api/api";
 import { Listing, AFRICAN_COUNTRIES, Category, CATEGORY_LABELS } from "@/lib/types";
 import ListingCard from "@/components/ListingCard";
 import { ListingSkeletonList } from "@/components/ListingSkeleton";
-import VoiceSearchButton from "@/components/VoiceSearchButton";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 interface PageResult {

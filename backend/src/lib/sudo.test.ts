@@ -13,9 +13,10 @@ describe("sudo tokens", () => {
   });
 
   it("rejects a token after it expires", async () => {
-    // 1-second TTL; sleep ~1.2s then verify.
+    // Token uses second-granularity expiry. 1-second TTL + 2.1s sleep avoids
+    // the off-by-one race when mint lands near a second boundary.
     const token = await mintSudoToken("user_abc", 1);
-    await new Promise((r) => setTimeout(r, 1200));
+    await new Promise((r) => setTimeout(r, 2100));
     expect(await verifySudoToken(token, "user_abc")).toBe(false);
   });
 

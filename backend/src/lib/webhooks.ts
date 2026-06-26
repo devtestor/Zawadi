@@ -152,20 +152,21 @@ async function rescheduleOrFail(
   });
 }
 
+export async function runWebhookTick(): Promise<void> {
+  try {
+    const due = await prisma.webhookDelivery.findMany({
+      where: { status: "pending", nextAttemptAt: { lte: new Date() } },
+      orderBy: { createdAt: "asc" },
+      take: 20,
+      select: { id: true },
+    });
+    await Promise.all(due.map((d) => deliverOne(d.id)));
+  } catch (e) {
+    logger.warn("webhook processor tick failed", { err: e instanceof Error ? e.message : String(e) });
+  }
+}
+
 export function startWebhookProcessor(): void {
-  const tick = async () => {
-    try {
-      const due = await prisma.webhookDelivery.findMany({
-        where: { status: "pending", nextAttemptAt: { lte: new Date() } },
-        orderBy: { createdAt: "asc" },
-        take: 20,
-        select: { id: true },
-      });
-      await Promise.all(due.map((d) => deliverOne(d.id)));
-    } catch (e) {
-      logger.warn("webhook processor tick failed", { err: e instanceof Error ? e.message : String(e) });
-    }
-  };
-  setTimeout(tick, 5_000);
-  setInterval(tick, 15_000);
+  setTimeout(runWebhookTick, 5_000);
+  setInterval(runWebhookTick, 15_000);
 }

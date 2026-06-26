@@ -5,12 +5,16 @@ import {
   Pressable,
   StatusBar,
   ActivityIndicator,
+  Platform,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { OtpInput } from "react-native-otp-entry";
 import { authClient } from "@/lib/auth/auth-client";
 import { useInvalidateSession } from "@/lib/auth/use-session";
 import { LinearGradient } from "expo-linear-gradient";
+import { ShieldCheck, ArrowLeft } from "lucide-react-native";
+
+const isWeb = Platform.OS === "web";
 
 export default function VerifyOTP() {
   const { email } = useLocalSearchParams<{ email: string }>();
@@ -56,27 +60,50 @@ export default function VerifyOTP() {
       <Pressable
         testID="back-button"
         onPress={() => router.back()}
-        style={{ position: "absolute", top: 60, left: 24, zIndex: 10, padding: 8 }}
+        style={{ position: "absolute", top: isWeb ? 24 : 60, left: 24, zIndex: 10, padding: 8, flexDirection: "row", alignItems: "center", gap: 6 }}
       >
-        <Text style={{ color: "#D4A843", fontSize: 16, fontWeight: "700" }}>← Back</Text>
+        <ArrowLeft size={16} color="#D4A843" strokeWidth={2.5} />
+        <Text style={{ color: "#D4A843", fontSize: 15, fontWeight: "700" }}>Back</Text>
       </Pressable>
 
-      <View style={{ flex: 1, paddingHorizontal: 32, justifyContent: "center" }}>
-        <View style={{
-          width: 72, height: 72, borderRadius: 20,
-          backgroundColor: "#16161E", borderWidth: 2, borderColor: "#D4A843",
-          alignItems: "center", justifyContent: "center", marginBottom: 32,
-        }}>
-          <Text style={{ fontSize: 32 }}>🔐</Text>
+      <View style={{ flex: 1, paddingHorizontal: 24, justifyContent: "center", alignItems: "center" }}>
+       <View style={{
+         width: "100%",
+         maxWidth: 440,
+         ...(isWeb ? {
+           backgroundColor: "rgba(22,22,30,0.55)",
+           borderRadius: 24,
+           borderWidth: 1,
+           borderColor: "#1F1F2A",
+           padding: 36,
+         } : {}),
+       }}>
+        <View style={{ alignItems: "center", marginBottom: 28 }}>
+          <LinearGradient
+            colors={["#1F1F2A", "#16161E"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={{
+              width: isWeb ? 60 : 72,
+              height: isWeb ? 60 : 72,
+              borderRadius: isWeb ? 18 : 20,
+              borderWidth: 1.5, borderColor: "#D4A843",
+              alignItems: "center", justifyContent: "center",
+              shadowColor: "#D4A843", shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: 0.3, shadowRadius: 16,
+            }}
+          >
+            <ShieldCheck size={isWeb ? 30 : 36} color="#D4A843" strokeWidth={2} />
+          </LinearGradient>
         </View>
 
-        <Text style={{ color: "#FFFFFF", fontSize: 32, fontWeight: "900", marginBottom: 12 }}>
+        <Text style={{ color: "#FFFFFF", fontSize: isWeb ? 26 : 30, fontWeight: "800", marginBottom: 10, textAlign: "center" }}>
           Verify your email
         </Text>
-        <Text style={{ color: "#666680", fontSize: 16, marginBottom: 8, lineHeight: 24 }}>
+        <Text style={{ color: "#7A7A95", fontSize: 15, marginBottom: 4, lineHeight: 22, textAlign: "center" }}>
           We sent a 6-digit code to
         </Text>
-        <Text style={{ color: "#D4A843", fontSize: 16, fontWeight: "700", marginBottom: 48 }}>
+        <Text style={{ color: "#D4A843", fontSize: 15, fontWeight: "700", marginBottom: 36, textAlign: "center" }}>
           {email}
         </Text>
 
@@ -89,18 +116,18 @@ export default function VerifyOTP() {
             type="numeric"
             focusColor="#D4A843"
             theme={{
-              containerStyle: { marginBottom: 32 },
+              containerStyle: { marginBottom: 32, justifyContent: "center", gap: 6 },
               pinCodeContainerStyle: {
                 backgroundColor: "#16161E",
-                borderColor: "#2A2A3A",
-                borderRadius: 14,
+                borderColor: "#252535",
+                borderRadius: 12,
                 borderWidth: 1.5,
-                width: 48,
-                height: 58,
+                width: 46,
+                height: 56,
               },
               pinCodeTextStyle: {
                 color: "#FFFFFF",
-                fontSize: 24,
+                fontSize: 22,
                 fontWeight: "800",
               },
               focusStickStyle: { backgroundColor: "#D4A843" },
@@ -119,13 +146,14 @@ export default function VerifyOTP() {
         ) : null}
 
         <Pressable testID="resend-button" onPress={handleResend} disabled={resending}>
-          <Text style={{ color: "#666680", textAlign: "center", fontSize: 15 }}>
+          <Text style={{ color: "#7A7A95", textAlign: "center", fontSize: 14 }}>
             Didn't receive it?{" "}
             <Text style={{ color: "#D4A843", fontWeight: "700" }}>
               {resending ? "Sending..." : "Resend code"}
             </Text>
           </Text>
         </Pressable>
+       </View>
       </View>
     </View>
   );

@@ -123,7 +123,7 @@ export default function TradeDetailScreen() {
                 testID="trade-receipt-pdf"
                 onPress={async () => {
                   try {
-                    const SecureStore = await import("expo-secure-store");
+                    const SecureStore = await import("@/lib/secure-store");
                     const Print = await import("expo-print");
                     const Sharing = await import("expo-sharing");
                     const cookie = (await SecureStore.getItemAsync("zawadi_auth_cookie")) || "";

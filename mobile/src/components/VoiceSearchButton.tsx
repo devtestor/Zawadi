@@ -2,7 +2,7 @@ import React, { useRef, useState } from "react";
 import { Pressable, ActivityIndicator, Alert } from "react-native";
 import { Mic, MicOff } from "lucide-react-native";
 import { Audio } from "expo-av";
-import * as SecureStore from "expo-secure-store";
+import * as SecureStore from "@/lib/secure-store";
 
 const COOKIE_KEY = "zawadi_auth_cookie";
 

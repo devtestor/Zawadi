@@ -1,5 +1,5 @@
 import * as ImagePicker from "expo-image-picker";
-import * as SecureStore from "expo-secure-store";
+import * as SecureStore from "@/lib/secure-store";
 
 export type UploadResult = {
   id: string;

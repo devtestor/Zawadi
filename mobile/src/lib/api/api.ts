@@ -1,5 +1,5 @@
 import { fetch, type FetchRequestInit } from "expo/fetch";
-import * as SecureStore from "expo-secure-store";
+import * as SecureStore from "@/lib/secure-store";
 
 const baseUrl = process.env.EXPO_PUBLIC_BACKEND_URL!;
 const COOKIE_KEY = "zawadi_auth_cookie";
