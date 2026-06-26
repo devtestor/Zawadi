@@ -54,8 +54,12 @@ jobs:
             ${{ runner.os }}-bun-backend-
       - name: Install
         run: bun install --frozen-lockfile
-      - name: Generate Prisma client (SQLite, matches the dev schema tests use)
-        run: bunx prisma generate
+      - name: Generate Prisma client + create SQLite db (matches the dev schema tests use)
+        env:
+          DATABASE_URL: "file:./prisma/dev.db"
+        run: |
+          bunx prisma generate
+          bunx prisma db push --skip-generate --accept-data-loss
       - name: Typecheck
         # 47 pre-existing TS errors live across listings/trades/wallet/contracts.
         # Non-blocking until cleaned up; tests still gate the deploy.
