@@ -1,0 +1,103 @@
+# PR-only validation. The push-to-main deploy workflow re-runs the same
+# checks before building images, so we don't duplicate them here on main.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # New commits on the same PR cancel in-flight CI runs.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend typecheck + tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Cache Bun deps
+        uses: actions/cache@v4
+        with:
+          path: backend/node_modules
+          key: ${{ runner.os }}-bun-backend-${{ hashFiles('backend/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-backend-
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Generate Prisma client (Postgres schema, matches prod image)
+        run: cp prisma/schema.postgresql.prisma prisma/schema.prisma && bunx prisma generate
+      - name: Typecheck
+        run: bun run typecheck
+      - name: Tests
+        run: bun test
+
+  mobile:
+    name: Mobile typecheck + lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Cache Bun deps
+        uses: actions/cache@v4
+        with:
+          path: mobile/node_modules
+          key: ${{ runner.os }}-bun-mobile-${{ hashFiles('mobile/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-mobile-
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Typecheck
+        run: bun run typecheck
+      - name: Lint
+        run: bun run lint
+        continue-on-error: true
+
+  docker-backend:
+    name: Backend Docker build (no push)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: false
+          tags: alcurry-backend:ci
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+
+  docker-web:
+    name: Web Docker build (no push)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: ./mobile
+          file: ./mobile/Dockerfile.web
+          push: false
+          tags: alcurry-web:ci
+          build-args: |
+            EXPO_PUBLIC_BACKEND_URL=https://api.alcurry.app
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
