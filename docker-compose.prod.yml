@@ -3,9 +3,9 @@
 # on the VPS — the CI workflow at .github/workflows/deploy.yml pushes the
 # image and SSHes in to run `docker compose pull && up`.
 #
-# Required env on the VPS (in /opt/zawadi/.env):
-#   API_DOMAIN          backend hostname, e.g. api.zawadi.app
-#   WEB_DOMAIN          web hostname, e.g. zawadi.app
+# Required env on the VPS (in /opt/alcurry/.env — see .env.production.example):
+#   API_DOMAIN          backend hostname, e.g. api.alcurry.app
+#   WEB_DOMAIN          web hostname, e.g. alcurry.app
 #   IMAGE_TAG           image to deploy (default: latest)
 #   GITHUB_REPO         e.g. devtestor/Zawadi (case-sensitive)
 #   POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB
@@ -133,8 +133,8 @@ services:
       while true; do
         sleep $$(awk 'BEGIN{srand(); print int(86400 - (systime()%86400))}');
         TS=$$(date -u +%Y%m%d-%H%M%S);
-        pg_dump -h db -U $$POSTGRES_USER $$POSTGRES_DB | gzip > /backups/zawadi-$$TS.sql.gz || true;
-        find /backups -type f -name 'zawadi-*.sql.gz' -mtime +14 -delete || true;
+        pg_dump -h db -U $$POSTGRES_USER $$POSTGRES_DB | gzip > /backups/alcurry-$$TS.sql.gz || true;
+        find /backups -type f -name 'alcurry-*.sql.gz' -mtime +14 -delete || true;
       done"
 
 volumes:

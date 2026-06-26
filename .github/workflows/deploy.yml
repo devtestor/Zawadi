@@ -90,7 +90,7 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           source: "docker-compose.prod.yml,Caddyfile,scripts/deploy.sh"
-          target: "/opt/zawadi/"
+          target: "/opt/alcurry/"
           strip_components: 0
 
       - name: Pull + restart on VPS
@@ -102,8 +102,8 @@ jobs:
           envs: IMAGE_TAG,GITHUB_REPO
           script: |
             set -euo pipefail
-            cd /opt/zawadi
-            # IMAGE_TAG + GITHUB_REPO get written into /opt/zawadi/.env by
+            cd /opt/alcurry
+            # IMAGE_TAG + GITHUB_REPO get written into /opt/alcurry/.env by
             # the bootstrap script. Here we just bump the tag.
             sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=${{ needs.build-and-push.outputs.tag }}/" .env || \
               echo "IMAGE_TAG=${{ needs.build-and-push.outputs.tag }}" >> .env

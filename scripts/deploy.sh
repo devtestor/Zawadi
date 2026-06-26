@@ -6,7 +6,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 if [ ! -f .env ]; then
-  echo "Missing /opt/zawadi/.env — copy from .env.example and fill in." >&2
+  echo "Missing /opt/alcurry/.env — copy from .env.production.example and fill in." >&2
   exit 1
 fi
 # shellcheck disable=SC1091
