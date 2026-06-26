@@ -44,6 +44,10 @@ jobs:
         run: bun run typecheck
         continue-on-error: true
       - name: Tests
+        env:
+          BETTER_AUTH_SECRET: ci-test-secret-not-used-in-prod
+          DATABASE_URL: "file:./prisma/dev.db"
+          DATABASE_PROVIDER: sqlite
         run: bun test
 
   mobile:
