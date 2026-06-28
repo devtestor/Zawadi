@@ -30,7 +30,9 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}/backend
+  # Note: ${{ github.repository }} preserves casing (e.g. devtestor/Zawadi).
+  # GHCR rejects uppercase in image tags, so the build-and-push job computes
+  # a lowercased IMAGE_OWNER via a shell step. All tag refs below use it.
 
 jobs:
   backend-test:
@@ -117,11 +119,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Resolve tag
+      - name: Resolve tag + lowercased repo
         id: meta
         run: |
           TAG="${{ inputs.tag || github.sha }}"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          REPO_LC="${GITHUB_REPOSITORY,,}"   # GHCR rejects uppercase tags.
+          echo "tag=$TAG"        >> "$GITHUB_OUTPUT"
+          echo "repo_lc=$REPO_LC" >> "$GITHUB_OUTPUT"
 
       - name: Build + push backend
         uses: docker/build-push-action@v6
@@ -130,8 +134,8 @@ jobs:
           push: true
           platforms: linux/amd64
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.repo_lc }}/backend:${{ steps.meta.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.repo_lc }}/backend:latest
           cache-from: type=gha,scope=backend
           cache-to: type=gha,scope=backend,mode=max
 
@@ -143,8 +147,8 @@ jobs:
           push: true
           platforms: linux/amd64
           tags: |
-            ${{ env.REGISTRY }}/${{ github.repository }}/web:${{ steps.meta.outputs.tag }}
-            ${{ env.REGISTRY }}/${{ github.repository }}/web:latest
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.repo_lc }}/web:${{ steps.meta.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.repo_lc }}/web:latest
           build-args: |
             EXPO_PUBLIC_BACKEND_URL=https://${{ vars.API_DOMAIN }}
           cache-from: type=gha,scope=web
