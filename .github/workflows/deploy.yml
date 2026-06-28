@@ -139,20 +139,9 @@ jobs:
           cache-from: type=gha,scope=backend
           cache-to: type=gha,scope=backend,mode=max
 
-      - name: Build + push web
-        uses: docker/build-push-action@v6
-        with:
-          context: ./mobile
-          file: ./mobile/Dockerfile.web
-          push: true
-          platforms: linux/amd64
-          tags: |
-            ${{ env.REGISTRY }}/${{ steps.meta.outputs.repo_lc }}/web:${{ steps.meta.outputs.tag }}
-            ${{ env.REGISTRY }}/${{ steps.meta.outputs.repo_lc }}/web:latest
-          build-args: |
-            EXPO_PUBLIC_BACKEND_URL=https://${{ vars.API_DOMAIN }}
-          cache-from: type=gha,scope=web
-          cache-to: type=gha,scope=web,mode=max
+      # The web image build was removed: `bunx expo export --platform web` hangs
+      # past the 6 h job limit. The Expo web bundle will live on Vercel instead;
+      # the Linode stack only serves the backend. See deploy.md for the plan.
 
   deploy:
     name: Deploy to VPS

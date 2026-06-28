@@ -33,12 +33,17 @@
   }
 }
 
-# --- Web (Expo static export) ---
+# --- Web (placeholder until the Expo web bundle is moved to Vercel) ---
+# The web `:` service is intentionally not deployed via this Caddy. The Expo
+# static export will live on Vercel; this block stays as a friendly redirect
+# so the apex domain doesn't 502 in the meantime.
 {$WEB_DOMAIN} {
   encode zstd gzip
   import common_headers
 
-  reverse_proxy web:80
+  respond / 200 {
+    body "<!doctype html><html><head><meta charset=utf-8><title>ALCURRY</title><meta name=viewport content='width=device-width,initial-scale=1'><style>body{font-family:system-ui;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0a0a0a;color:#fff;text-align:center;padding:24px}h1{font-size:48px;letter-spacing:-1px;margin:0 0 8px}p{opacity:.7;margin:0}</style></head><body><div><h1>ALCURRY</h1><p>Coming soon.</p></div></body></html>"
+  }
 
   log {
     output stdout
