@@ -5,7 +5,9 @@
 # ---- build ----
 # Debian-slim base for the build stage — apt mirrors are far more reliable
 # than dl-cdn.alpinelinux.org which intermittently 5xxs.
-FROM oven/bun:1.2-slim AS build
+# bun 1.3+ required — `bunx expo export` hangs indefinitely on 1.2 (verified
+# in CI: 6 h timeout vs. ~45 s on bun 1.3 locally).
+FROM oven/bun:1.3-slim AS build
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
       git python3 make g++ ca-certificates \

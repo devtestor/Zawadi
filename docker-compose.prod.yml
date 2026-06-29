@@ -28,10 +28,11 @@ services:
       WEB_DOMAIN: ${WEB_DOMAIN}
     depends_on:
       - backend
+      - web
 
-  # The `web` service is intentionally absent. The Expo web bundle is being
-  # moved to Vercel; see deploy.md for the migration plan. Caddy serves a
-  # static placeholder for the apex domain in the meantime.
+  web:
+    image: ghcr.io/${GITHUB_REPO}/web:${IMAGE_TAG:-latest}
+    restart: unless-stopped
 
   db:
     image: postgres:16-alpine
