@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { Platform, View } from "react-native";
 import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
 import { Stack, router } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -74,13 +75,38 @@ function RootLayoutNav() {
   );
 }
 
+// On web, constrain the mobile-shaped UI to a phone-width column centered on a
+// dark page background so desktop viewers see an app frame, not a stretched UI.
+// Native platforms get the bare content.
+function WebPhoneFrame({ children }: { children: React.ReactNode }) {
+  if (Platform.OS !== "web") return <>{children}</>;
+  return (
+    <View style={{ flex: 1, backgroundColor: "#05050A", alignItems: "center" }}>
+      <View
+        style={{
+          flex: 1,
+          width: "100%",
+          maxWidth: 480,
+          backgroundColor: "#0A0A0F",
+          // @ts-expect-error — web-only shadow
+          boxShadow: "0 0 60px rgba(0,0,0,0.6)",
+        }}
+      >
+        {children}
+      </View>
+    </View>
+  );
+}
+
 export default function RootLayout() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <GestureHandlerRootView style={{ flex: 1 }}>
           <KeyboardProvider>
-            <RootLayoutNav />
+            <WebPhoneFrame>
+              <RootLayoutNav />
+            </WebPhoneFrame>
           </KeyboardProvider>
         </GestureHandlerRootView>
       </QueryClientProvider>

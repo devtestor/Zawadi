@@ -103,6 +103,16 @@ export default function AppLayout() {
           ),
         }}
       />
+      {/* Routes that live under (app) but are not tab bar entries. Without
+          href: null, Expo Router renders each as a tab with a default chevron icon. */}
+      <Tabs.Screen name="business-apply" options={{ href: null }} />
+      <Tabs.Screen name="kyc"            options={{ href: null }} />
+      <Tabs.Screen name="map"            options={{ href: null }} />
+      <Tabs.Screen name="messages"       options={{ href: null }} />
+      <Tabs.Screen name="saved-searches" options={{ href: null }} />
+      <Tabs.Screen name="trades"         options={{ href: null }} />
+      <Tabs.Screen name="verify-phone"   options={{ href: null }} />
+      <Tabs.Screen name="wallet"         options={{ href: null }} />
     </Tabs>
   );
 }
