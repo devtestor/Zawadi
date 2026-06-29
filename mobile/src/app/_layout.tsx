@@ -88,7 +88,6 @@ function WebPhoneFrame({ children }: { children: React.ReactNode }) {
           width: "100%",
           maxWidth: 480,
           backgroundColor: "#0A0A0F",
-          // @ts-expect-error — web-only shadow
           boxShadow: "0 0 60px rgba(0,0,0,0.6)",
         }}
       >
