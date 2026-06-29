@@ -22,7 +22,7 @@ if [ -n "${GHCR_TOKEN:-}" ] && [ -n "${GHCR_USER:-}" ]; then
   echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
 fi
 
-docker compose -f docker-compose.prod.yml pull backend web
+docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d --remove-orphans
 
 echo "Waiting for /health…"

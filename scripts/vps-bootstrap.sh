@@ -88,7 +88,7 @@ POSTGRES_DB=alcurry
 BETTER_AUTH_SECRET=changeme
 
 RESEND_API_KEY=
-EMAIL_FROM=ALCURRY <onboarding@resend.dev>
+EMAIL_FROM="ALCURRY <onboarding@resend.dev>"
 
 STORAGE_PROVIDER=s3
 S3_REGION=auto
