@@ -38,6 +38,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends coreutils && rm
 RUN timeout --signal=TERM --kill-after=10s 300 bunx expo export --platform web --output-dir dist; \
     test -f dist/index.html || (echo "EXPORT FAILED — no dist/index.html"; exit 1)
 
+# Inject page title, favicon and Open Graph / Twitter link-preview tags into the
+# exported index.html. Expo's +html.tsx is ignored by single-page web output, so
+# the head is customized post-export. See src/app/+html.tsx for the rationale.
+RUN bun scripts/inject-meta.mjs dist \
+    && grep -q 'og:image' dist/index.html || (echo "META INJECTION FAILED"; exit 1)
+
 # ---- runtime ----
 # Caddy stays on Alpine — the runtime is cached/pulled, not built, so the
 # transient apk issue doesn't apply here.
