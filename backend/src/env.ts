@@ -10,7 +10,7 @@ const envSchema = z.object({
   DATABASE_PROVIDER: z.enum(["sqlite", "postgresql", "mysql"]).default("sqlite"),
   BETTER_AUTH_SECRET: z.string().min(1, "BETTER_AUTH_SECRET is required"),
   BACKEND_URL: z.string().optional().default("http://localhost:3000"),
-  // Comma-separated. Supports * as a wildcard, e.g. "https://*.zawadi.app,https://zawadi.app"
+  // Comma-separated. Supports * as a wildcard, e.g. "https://*.alcurry.app,https://alcurry.app"
   ALLOWED_ORIGINS: z.string().optional().default(""),
   // Comma-separated app deep-link schemes accepted by Better Auth (e.g. "zawadi://")
   APP_SCHEMES: z.string().optional().default("zawadi://"),
@@ -31,7 +31,7 @@ const envSchema = z.object({
   // Email (transactional). Resend is required for production email-OTP sign-in;
   // we validate at send time so missing keys don't block the rest of the API.
   RESEND_API_KEY: z.string().optional().default(""),
-  EMAIL_FROM: z.string().optional().default("ZAWADI <onboarding@resend.dev>"),
+  EMAIL_FROM: z.string().optional().default("Alcurry <onboarding@resend.dev>"),
 
   // Storage. S3-compatible (AWS S3, Cloudflare R2, MinIO).
   STORAGE_PROVIDER: z.enum(["s3"]).optional().default("s3"),

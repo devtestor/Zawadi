@@ -68,7 +68,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       # Email
       RESEND_API_KEY: ${RESEND_API_KEY}
-      EMAIL_FROM: ${EMAIL_FROM:-ZAWADI <onboarding@resend.dev>}
+      EMAIL_FROM: ${EMAIL_FROM:-Alcurry <onboarding@resend.dev>}
       # Storage
       STORAGE_PROVIDER: s3
       S3_REGION: ${S3_REGION:-auto}

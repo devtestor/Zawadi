@@ -216,7 +216,7 @@ router.post("/phone/start", zValidator("json", phoneStartSchema), async (c) => {
       expiresAt: new Date(Date.now() + 10 * 60 * 1000),
     },
   });
-  await sendSms(phone, `ZAWADI verification code: ${code}. Valid for 10 minutes.`);
+  await sendSms(phone, `Alcurry verification code: ${code}. Valid for 10 minutes.`);
   return c.json({ data: { ok: true } });
 });
 

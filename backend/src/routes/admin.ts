@@ -210,7 +210,7 @@ router.get("/settlement.csv", async (c) => {
   c.header("Content-Type", "text/csv; charset=utf-8");
   c.header(
     "Content-Disposition",
-    `attachment; filename="zawadi-settlement-${from.toISOString().slice(0, 10)}-to-${to.toISOString().slice(0, 10)}.csv"`,
+    `attachment; filename="alcurry-settlement-${from.toISOString().slice(0, 10)}-to-${to.toISOString().slice(0, 10)}.csv"`,
   );
   return c.body(lines.join("\n"));
 });

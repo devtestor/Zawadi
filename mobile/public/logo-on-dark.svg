@@ -1,0 +1,13 @@
+<svg width="248" height="64" viewBox="0 0 248 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Alcurry">
+  <defs>
+    <linearGradient id="alcurryGold" x1="32" y1="12" x2="32" y2="52" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E8C766"/>
+      <stop offset="1" stop-color="#C99A36"/>
+    </linearGradient>
+  </defs>
+  <!-- Mark (no tile — for placing directly on a dark surface) -->
+  <path d="M14 49 L32 16 L50 49" fill="none" stroke="url(#alcurryGold)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M21 40 L43 40" stroke="url(#alcurryGold)" stroke-width="7" stroke-linecap="round"/>
+  <!-- Wordmark for dark backgrounds -->
+  <text x="80" y="42" font-family="'Poppins','Segoe UI',Helvetica,Arial,sans-serif" font-size="30" font-weight="700" letter-spacing="-0.5" fill="#F5F1E6">Alcurry</text>
+</svg>

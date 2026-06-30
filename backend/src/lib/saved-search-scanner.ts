@@ -77,7 +77,7 @@ async function dailyDigest(): Promise<void> {
     const list = counts.map((c) => `<li><strong>${c.name}</strong>: ${c.count} new matches</li>`).join("");
     await sendEmail({
       to: u.email,
-      subject: `Your ZAWADI digest — ${total} new matches today`,
+      subject: `Your Alcurry digest — ${total} new matches today`,
       text: `Hi ${u.name}, here's what's new in your saved searches today: ${counts
         .map((c) => `${c.name} (${c.count})`)
         .join(", ")}`,

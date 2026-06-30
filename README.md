@@ -1,6 +1,6 @@
-# ZAWADI — Africa's Marketplace
+# Alcurry — Africa's Marketplace
 
-Full-stack mobile marketplace for Property, Land, Cars, Mining Sites, and Machinery across 54 African countries. "Zawadi" is Swahili for "gift / treasure."
+Full-stack mobile marketplace for Property, Land, Cars, Mining Sites, and Machinery across 54 African countries.
 
 ## Stack
 
@@ -193,7 +193,7 @@ DELETE /api/admin/listings/:id
 
 ## On-chain escrow audit trail
 
-Zawadi can anchor every Trade transition to a public EVM chain (Polygon by
+Alcurry can anchor every Trade transition to a public EVM chain (Polygon by
 default, but the contract is chain-agnostic). When enabled, each agreement
 gets created, signed, funded, delivered, completed, refunded, or cancelled
 on chain in addition to the wallet ledger — giving you an immutable public

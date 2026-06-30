@@ -62,7 +62,7 @@ export default function BoostScreen() {
           </View>
           <Text style={{ color: "#FFFFFF", fontSize: 22, fontWeight: "900", marginBottom: 4 }}>Get 10x more views</Text>
           <Text style={{ color: "#888", fontSize: 14, textAlign: "center", lineHeight: 20 }}>
-            Featured listings appear at the top and in the Featured row across ZAWADI.
+            Featured listings appear at the top and in the Featured row across Alcurry.
           </Text>
         </View>
 

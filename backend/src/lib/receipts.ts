@@ -62,7 +62,7 @@ export async function buildReceiptForTrade(tradeId: string): Promise<ReceiptData
 </head><body>
 <div class="card">
   <div class="header">
-    <p class="h1">ZAWADI Marketplace</p>
+    <img src="https://alcurry.app/logo_alcurry_dark.png" alt="Alcurry" width="124" height="32" style="display:block;margin:0 0 4px;border:0" />
     <p class="sub">Receipt #${number} · ${completedAt.toUTCString()}</p>
     <p style="margin-top:10px"><span class="pill">PAID</span></p>
   </div>
@@ -97,7 +97,7 @@ export async function buildReceiptForTrade(tradeId: string): Promise<ReceiptData
 </body></html>`;
 
   const text = [
-    `ZAWADI Receipt ${number}`,
+    `Alcurry Receipt ${number}`,
     `Trade ${trade.id} — ${trade.listing.title}`,
     `Total charged to buyer: ${fmt(trade.amount, trade.currency)}`,
     `Platform fee: ${fmt(trade.feeAmount, trade.currency)}`,
@@ -122,13 +122,13 @@ export async function emailReceiptToParties(tradeId: string): Promise<void> {
     if (!trade) return;
     await sendEmail({
       to: trade.buyer.email,
-      subject: `Your ZAWADI receipt ${r.number}`,
+      subject: `Your Alcurry receipt ${r.number}`,
       text: r.text,
       html: r.html,
     });
     await sendEmail({
       to: trade.seller.email,
-      subject: `ZAWADI sale receipt ${r.number}`,
+      subject: `Alcurry sale receipt ${r.number}`,
       text: r.text,
       html: r.html,
     });

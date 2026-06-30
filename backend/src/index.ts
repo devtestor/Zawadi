@@ -133,7 +133,7 @@ app.get("/api/openapi.json", async (c) => {
   return c.json(openapi);
 });
 app.get("/api/docs", (c) =>
-  c.html(`<!doctype html><html><head><title>ZAWADI API</title></head>
+  c.html(`<!doctype html><html><head><title>Alcurry API</title></head>
 <body><script id="api-reference" data-url="/api/openapi.json"></script>
 <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script></body></html>`),
 );
@@ -295,7 +295,7 @@ app.post("/api/ai/listing-writer", async (c) => {
     title?: string;
     notes?: string;
   };
-  const prompt = `Write a polished marketplace listing description for an African marketplace called ZAWADI.
+  const prompt = `Write a polished marketplace listing description for an African marketplace called Alcurry.
 Category: ${body.category || "(unspecified)"}
 Country: ${body.country || "(unspecified)"}
 Title (draft): ${body.title || "(unspecified)"}

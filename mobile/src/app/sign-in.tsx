@@ -13,7 +13,8 @@ import {
 import { router } from "expo-router";
 import { authClient } from "@/lib/auth/auth-client";
 import { LinearGradient } from "expo-linear-gradient";
-import { Mail, Globe2, ArrowRight } from "lucide-react-native";
+import { Mail, ArrowRight } from "lucide-react-native";
+import Svg, { Path } from "react-native-svg";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -102,13 +103,17 @@ export default function SignIn() {
                 shadowOpacity: 0.45, shadowRadius: 24,
               }}
             >
-              <Globe2 size={isWeb ? 32 : 40} color="#0A0A0F" strokeWidth={2.25} />
+              {/* Alcurry mark: rooftop / mountain / "A" */}
+              <Svg width={isWeb ? 34 : 42} height={isWeb ? 34 : 42} viewBox="0 0 64 64">
+                <Path d="M14 49 L32 16 L50 49" fill="none" stroke="#0A0A0F" strokeWidth={7} strokeLinecap="round" strokeLinejoin="round" />
+                <Path d="M21 40 L43 40" stroke="#0A0A0F" strokeWidth={7} strokeLinecap="round" />
+              </Svg>
             </LinearGradient>
             <Text style={{
               fontSize: isWeb ? 32 : 42, fontWeight: "900",
               color: "#FFFFFF", letterSpacing: -1,
             }}>
-              ZAWADI
+              Alcurry
             </Text>
             <Text style={{
               fontSize: isWeb ? 11 : 14, color: "#D4A843",

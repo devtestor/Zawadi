@@ -8,6 +8,7 @@ import { getOrCreateWallet, postEntry } from "../lib/wallet";
 import { env } from "../env";
 import { startCheckout, getTransactionStatus, pesapalConfigured } from "../lib/pesapal";
 import { logger } from "../lib/logger";
+import { alcurryMark } from "../lib/brand";
 
 type Variables = {
   user: typeof auth.$Infer.Session.user | null;
@@ -74,7 +75,7 @@ router.post("/topup", zValidator("json", walletTopupSchema), async (c) => {
       txRef,
       amount: major,
       currency: currency.toUpperCase(),
-      description: `ZAWADI wallet top-up`,
+      description: `Alcurry wallet top-up`,
       callbackPath: "/api/wallet/return",
       email: user.email,
       firstName: parts[0] || "Customer",
@@ -150,7 +151,7 @@ async function verifyAndCredit(topupId: string, orderTrackingId: string): Promis
 }
 
 function renderReturn(): string {
-  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>ZAWADI wallet</title></head><body style="margin:0;background:#0A0A0F;color:#fff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh"><div style="text-align:center;padding:32px;max-width:420px"><div style="font-size:48px;margin-bottom:16px">💳</div><h1 style="color:#D4A843;font-size:22px;margin:0 0 8px">Thanks!</h1><p style="color:#888;font-size:14px;margin:0 0 24px">Your top-up is being credited. You can close this window and return to the app.</p></div></body></html>`;
+  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Alcurry wallet</title></head><body style="margin:0;background:#0A0A0F;color:#fff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh"><div style="text-align:center;padding:32px;max-width:420px"><div style="margin-bottom:20px">${alcurryMark(40)}</div><div style="font-size:48px;margin-bottom:16px">💳</div><h1 style="color:#D4A843;font-size:22px;margin:0 0 8px">Thanks!</h1><p style="color:#888;font-size:14px;margin:0 0 24px">Your top-up is being credited. You can close this window and return to the app.</p></div></body></html>`;
 }
 
 // POST /api/wallet/withdraw - create a pending withdrawal. Funds debit on
@@ -465,7 +466,7 @@ router.get("/statement.csv", async (c) => {
   c.header("Content-Type", "text/csv; charset=utf-8");
   c.header(
     "Content-Disposition",
-    `attachment; filename="zawadi-statement-${from.toISOString().slice(0, 10)}-to-${to.toISOString().slice(0, 10)}.csv"`,
+    `attachment; filename="alcurry-statement-${from.toISOString().slice(0, 10)}-to-${to.toISOString().slice(0, 10)}.csv"`,
   );
   return c.body(lines.join("\n"));
 });

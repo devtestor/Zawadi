@@ -59,7 +59,7 @@ describe("otpAuthUri", () => {
   it("encodes the issuer + label + secret", () => {
     const uri = otpAuthUri("alice@example.com", "ABCDEF234567");
     expect(uri).toBe(
-      "otpauth://totp/ZAWADI:alice%40example.com?secret=ABCDEF234567&issuer=ZAWADI&algorithm=SHA1&digits=6&period=30",
+      "otpauth://totp/Alcurry:alice%40example.com?secret=ABCDEF234567&issuer=Alcurry&algorithm=SHA1&digits=6&period=30",
     );
   });
 

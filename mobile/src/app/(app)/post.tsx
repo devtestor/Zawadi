@@ -289,7 +289,7 @@ export default function PostScreen() {
       await api.post("/api/listings", body);
       queryClient.invalidateQueries({ queryKey: ["listings"] });
       await clearDraft();
-      Alert.alert("Posted!", "Your listing is now live on ZAWADI", [
+      Alert.alert("Posted!", "Your listing is now live on Alcurry", [
         { text: "View Home", onPress: () => router.push("/(app)") },
       ]);
       setStep(1); setCategory(null); setTitle(""); setDescription(""); setPrice(""); setCountry(""); setCity("");
@@ -494,7 +494,7 @@ export default function PostScreen() {
                     style={{ maxWidth: 200, flexGrow: 0 }}
                     contentContainerStyle={{ gap: 8, paddingVertical: 2 }}
                   >
-                    {["USD", "ZAR", "NGN", "KES", "GHS", "EGP"].map((c) => (
+                    {["USD", "KES", "UGX", "RWF"].map((c) => (
                       <Pressable
                         key={c}
                         onPress={() => setCurrency(c)}

@@ -1,7 +1,7 @@
 
-# ZAWADI — Linode (Ubuntu) Deployment Runbook
+# Alcurry — Linode (Ubuntu) Deployment Runbook
 
-Complete, copy-paste-able guide to take ZAWADI from `git clone` to a public
+Complete, copy-paste-able guide to take Alcurry from `git clone` to a public
 production stack at `https://alcurry.app` + `https://api.alcurry.app`,
 running on a Linode VPS with Ubuntu 24.04 LTS.
 

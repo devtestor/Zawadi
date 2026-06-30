@@ -254,7 +254,7 @@ export default function ProfileScreen() {
               testID="referral-share"
               onPress={() =>
                 Share.share({
-                  message: `Use my ZAWADI code ${profile.referralCode} when you sign up — we both unlock a free boost.`,
+                  message: `Use my Alcurry code ${profile.referralCode} when you sign up — we both unlock a free boost.`,
                 })
               }
               style={{

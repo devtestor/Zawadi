@@ -72,7 +72,7 @@ export async function verifyTotp(secret: string, code: string, when = Date.now()
   return false;
 }
 
-export function otpAuthUri(label: string, secret: string, issuer = "ZAWADI"): string {
+export function otpAuthUri(label: string, secret: string, issuer = "Alcurry"): string {
   const enc = encodeURIComponent;
   return `otpauth://totp/${enc(issuer)}:${enc(label)}?secret=${secret}&issuer=${enc(issuer)}&algorithm=SHA1&digits=6&period=30`;
 }

@@ -92,7 +92,7 @@ export default function ListingDetailScreen() {
     } else if (type === "whatsapp" && listing?.user?.phone) {
       // Strip non-digits for the wa.me link.
       const phone = listing.user.phone.replace(/[^0-9]/g, "");
-      const text = encodeURIComponent(`Hi, I'm interested in your ZAWADI listing: ${listing.title}`);
+      const text = encodeURIComponent(`Hi, I'm interested in your Alcurry listing: ${listing.title}`);
       Linking.openURL(`https://wa.me/${phone}?text=${text}`);
     }
   };
@@ -196,7 +196,7 @@ export default function ListingDetailScreen() {
                   testID="share-button"
                   onPress={async () => {
                     const url = `zawadi://listing/${listing.id}`;
-                    const message = `${listing.title} — ${listing.country}${listing.city ? `, ${listing.city}` : ""}\n\nView on ZAWADI: ${url}`;
+                    const message = `${listing.title} — ${listing.country}${listing.city ? `, ${listing.city}` : ""}\n\nView on Alcurry: ${url}`;
                     try {
                       await Share.share(Platform.OS === "ios" ? { message, url } : { message });
                     } catch {

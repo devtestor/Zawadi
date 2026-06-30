@@ -1,7 +1,7 @@
-# ZAWADI on-chain escrow audit trail
+# Alcurry on-chain escrow audit trail
 
 `ZawadiEscrowFactory.sol` is the public, immutable record of every Trade
-that flows through Zawadi. The actual money stays in the platform's wallet
+that flows through Alcurry. The actual money stays in the platform's wallet
 ledger — the chain only records *who agreed to what, when, and in what state*,
 so disputes and auditors have something to point at.
 

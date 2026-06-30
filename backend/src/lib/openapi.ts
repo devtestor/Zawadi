@@ -4,13 +4,13 @@
 export const openapi = {
   openapi: "3.1.0",
   info: {
-    title: "ZAWADI API",
+    title: "Alcurry API",
     description: "African marketplace API — listings, chat, reviews, boost payments, admin moderation.",
     version: "1.0.0",
   },
   servers: [
     { url: "http://localhost:3000", description: "Dev" },
-    { url: "https://api.zawadi.app", description: "Production (configure your domain)" },
+    { url: "https://api.alcurry.app", description: "Production (configure your domain)" },
   ],
   tags: [
     { name: "auth" }, { name: "listings" }, { name: "favorites" },

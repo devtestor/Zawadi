@@ -6,6 +6,7 @@ import { env } from "../env";
 import { boostStartSchema, boostVariantCreateSchema } from "../lib/schemas";
 import { convertFromUSD } from "../lib/fx";
 import { logger } from "../lib/logger";
+import { alcurryMark } from "../lib/brand";
 
 type Variables = {
   user: typeof auth.$Infer.Session.user | null;
@@ -133,7 +134,7 @@ router.post("/:listingId", zValidator("json", boostStartSchema), async (c) => {
     id: txRef,
     currency,
     amount,
-    description: `ZAWADI ${tier.label} – ${listing.title}`.slice(0, 100),
+    description: `Alcurry ${tier.label} – ${listing.title}`.slice(0, 100),
     callback_url: `${env.BACKEND_URL}/api/boost/return`,
     notification_id: notificationId,
     billing_address: {
@@ -315,7 +316,7 @@ async function verifyAndApply(paymentId: string, orderTrackingId?: string | null
 function renderReturn(message: string, ok: boolean): string {
   const color = ok ? "#1A6B4A" : "#C0392B";
   const primaryScheme = (env.APP_SCHEMES.split(",")[0] || "zawadi://").trim().replace(/\/+$/, "");
-  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>ZAWADI Boost</title></head><body style="margin:0;background:#0A0A0F;color:#fff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;"><div style="text-align:center;padding:32px;max-width:420px"><div style="font-size:48px;margin-bottom:16px">${ok ? "✅" : "⚠️"}</div><h1 style="color:${color};font-size:22px;margin:0 0 8px">${message}</h1><p style="color:#888;font-size:14px;margin:0 0 24px">You can close this window and return to the app.</p><a href="${primaryScheme}//listings" style="background:#D4A843;color:#0A0A0F;padding:12px 24px;border-radius:12px;text-decoration:none;font-weight:800;display:inline-block">Back to app</a></div></body></html>`;
+  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Alcurry Boost</title></head><body style="margin:0;background:#0A0A0F;color:#fff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;"><div style="text-align:center;padding:32px;max-width:420px"><div style="margin-bottom:20px">${alcurryMark(40)}</div><div style="font-size:48px;margin-bottom:16px">${ok ? "✅" : "⚠️"}</div><h1 style="color:${color};font-size:22px;margin:0 0 8px">${message}</h1><p style="color:#888;font-size:14px;margin:0 0 24px">You can close this window and return to the app.</p><a href="${primaryScheme}//listings" style="background:#D4A843;color:#0A0A0F;padding:12px 24px;border-radius:12px;text-decoration:none;font-weight:800;display:inline-block">Back to app</a></div></body></html>`;
 }
 
 // POST /api/boost/:listingId/variants - register an alternate title for A/B testing.
