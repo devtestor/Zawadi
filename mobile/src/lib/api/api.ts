@@ -22,18 +22,28 @@ const request = async <T>(
 
   // 1. Handle 204 No Content
   if (response.status === 204) {
+    if (!response.ok) throw new Error(`Request failed (${response.status})`);
     return undefined as T;
   }
 
   // 2. JSON responses: parse and unwrap { data }
   const contentType = response.headers.get("content-type");
-  if (contentType?.includes("application/json")) {
-    const json = await response.json();
-    if (json && typeof json === "object" && "data" in json) return json.data as T;
-    return json as T;
+  const json = contentType?.includes("application/json")
+    ? await response.json().catch(() => undefined)
+    : undefined;
+
+  if (!response.ok) {
+    const message =
+      (json && typeof json === "object" && json.error?.message) ||
+      (json && typeof json === "object" && json.message) ||
+      `Request failed (${response.status})`;
+    throw new Error(message);
   }
 
-  // 3. Non-JSON: return undefined
+  if (json && typeof json === "object" && "data" in json) return json.data as T;
+  if (json !== undefined) return json as T;
+
+  // 3. Non-JSON success (e.g. no body): return undefined
   return undefined as T;
 };
 
