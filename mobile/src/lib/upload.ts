@@ -1,5 +1,6 @@
 import * as ImagePicker from "expo-image-picker";
 import * as SecureStore from "@/lib/secure-store";
+import { Platform } from "react-native";
 
 export type UploadResult = {
   id: string;
@@ -11,7 +12,29 @@ export type UploadResult = {
   moderation?: { safe: boolean; reasons: string[] };
 };
 
-export type PickedImage = { uri: string; filename: string; mimeType: string };
+export type PickedImage = {
+  uri: string;
+  filename: string;
+  mimeType: string;
+  /**
+   * Expo ImagePicker returns the browser File object on web. Keeping it lets
+   * FormData send the actual file bytes instead of a React Native `{ uri }`
+   * file descriptor, which browsers do not understand.
+   */
+  file?: Blob;
+};
+
+type ImagePickerAssetWithFile = ImagePicker.ImagePickerAsset & { file?: Blob };
+
+function toPickedImage(asset: ImagePicker.ImagePickerAsset, index = 0): PickedImage {
+  const a = asset as ImagePickerAssetWithFile;
+  return {
+    uri: a.uri,
+    filename: a.fileName ?? `image-${Date.now()}-${index}.jpg`,
+    mimeType: a.mimeType ?? "image/jpeg",
+    file: a.file,
+  };
+}
 
 export async function pickImage(): Promise<PickedImage | null> {
   const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -23,11 +46,7 @@ export async function pickImage(): Promise<PickedImage | null> {
   });
   if (result.canceled) return null;
   const a = result.assets[0];
-  return {
-    uri: a.uri,
-    filename: a.fileName ?? `image-${Date.now()}.jpg`,
-    mimeType: a.mimeType ?? "image/jpeg",
-  };
+  return toPickedImage(a);
 }
 
 export async function pickImages(max: number): Promise<PickedImage[]> {
@@ -42,34 +61,62 @@ export async function pickImages(max: number): Promise<PickedImage[]> {
     selectionLimit: max,
   });
   if (result.canceled) return [];
-  return result.assets.map((a, i) => ({
-    uri: a.uri,
-    filename: a.fileName ?? `image-${Date.now()}-${i}.jpg`,
-    mimeType: a.mimeType ?? "image/jpeg",
-  }));
+  return result.assets.map(toPickedImage);
 }
 
 const COOKIE_KEY = "zawadi_auth_cookie";
 
-export async function uploadFile(file: PickedImage): Promise<UploadResult> {
-  const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL!;
-  const cookie = (await SecureStore.getItemAsync(COOKIE_KEY)) || "";
-  const formData = new FormData();
+async function appendPickedImage(formData: FormData, file: PickedImage) {
+  if (Platform.OS === "web") {
+    const blob =
+      file.file ??
+      (await fetch(file.uri).then((response) => {
+        if (!response.ok) throw new Error("Could not read selected image");
+        return response.blob();
+      }));
+    const uploadBlob =
+      blob.type || typeof File === "undefined"
+        ? blob
+        : new File([blob], file.filename, { type: file.mimeType });
+    formData.append("file", uploadBlob, file.filename);
+    return;
+  }
+
   formData.append("file", {
     uri: file.uri,
     type: file.mimeType,
     name: file.filename,
   } as unknown as Blob);
+}
+
+export async function uploadFile(file: PickedImage): Promise<UploadResult> {
+  const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL!;
+  const cookie = (await SecureStore.getItemAsync(COOKIE_KEY)) || "";
+  const formData = new FormData();
+  await appendPickedImage(formData, file);
 
   const response = await fetch(`${BACKEND_URL}/api/upload`, {
     method: "POST",
     body: formData,
-    headers: cookie ? { Cookie: cookie } : undefined,
+    credentials: "include",
+    headers: cookie && Platform.OS !== "web" ? { Cookie: cookie } : undefined,
   });
 
-  const data = await response.json();
+  const text = await response.text();
+  const data = text
+    ? (() => {
+        try {
+          return JSON.parse(text);
+        } catch {
+          return undefined;
+        }
+      })()
+    : undefined;
   if (!response.ok) {
-    throw new Error(data?.error?.message || "Upload failed");
+    throw new Error(data?.error?.message || text || "Upload failed");
+  }
+  if (!data?.data) {
+    throw new Error("Upload failed: invalid server response");
   }
   return data.data as UploadResult;
 }

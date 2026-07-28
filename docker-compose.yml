@@ -31,10 +31,10 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-zawadi}:${POSTGRES_PASSWORD:-changeme}@db:5432/${POSTGRES_DB:-zawadi}?schema=public
       BACKEND_URL: ${BACKEND_URL:-http://localhost:3000}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
-      # Storage — required for image uploads (POST /api/upload). Without
-      # these the backend throws "Storage not configured" on every upload,
-      # which blocks listing submission for every category (min 3 photos).
+      # Storage. Local Docker falls back to LOCAL_UPLOAD_DIR when S3 is empty.
+      # Use S3/R2 values here to exercise production-like object storage.
       STORAGE_PROVIDER: s3
+      LOCAL_UPLOAD_DIR: ${LOCAL_UPLOAD_DIR:-uploads}
       S3_REGION: ${S3_REGION:-auto}
       S3_BUCKET: ${S3_BUCKET:-}
       S3_ENDPOINT: ${S3_ENDPOINT:-}
@@ -46,6 +46,8 @@ services:
       PESAPAL_BASE_URL: ${PESAPAL_BASE_URL:-https://pay.pesapal.com/v3}
       PESAPAL_CURRENCY: ${PESAPAL_CURRENCY:-RWF}
       PESAPAL_IPN_ID: ${PESAPAL_IPN_ID:-}
+    volumes:
+      - backend_uploads:/app/uploads
     ports:
       - "3000:3000"
     healthcheck:
@@ -56,3 +58,4 @@ services:
 
 volumes:
   db_data:
+  backend_uploads:

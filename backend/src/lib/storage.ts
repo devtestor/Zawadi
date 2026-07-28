@@ -1,4 +1,6 @@
 import { env } from "../env";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, resolve, sep } from "node:path";
 
 export interface UploadedFile {
   id: string;
@@ -76,15 +78,46 @@ async function s3Put(key: string, body: ArrayBuffer, contentType: string): Promi
   return `${publicBase}/${key}`;
 }
 
+function publicUploadUrl(key: string): string {
+  const base = env.BACKEND_URL.replace(/\/$/, "");
+  return `${base}/uploads/${key.split("/").map(encodeURIComponent).join("/")}`;
+}
+
+function localUploadPath(key: string): string {
+  const root = resolve(process.cwd(), env.LOCAL_UPLOAD_DIR);
+  const filePath = resolve(root, key);
+  if (filePath !== root && !filePath.startsWith(`${root}${sep}`)) {
+    throw new Error("Invalid upload path");
+  }
+  return filePath;
+}
+
+async function localPut(key: string, body: ArrayBuffer): Promise<string> {
+  const filePath = localUploadPath(key);
+  await mkdir(dirname(filePath), { recursive: true });
+  await writeFile(filePath, new Uint8Array(body));
+  return publicUploadUrl(key);
+}
+
 export async function uploadFile(file: File): Promise<UploadedFile> {
   const buf = await file.arrayBuffer();
-  if (!env.S3_BUCKET || !env.S3_ENDPOINT || !env.S3_ACCESS_KEY_ID || !env.S3_SECRET_ACCESS_KEY) {
-    throw new Error("Storage not configured — set S3_BUCKET/S3_ENDPOINT/S3_ACCESS_KEY_ID/S3_SECRET_ACCESS_KEY");
-  }
   const id = crypto.randomUUID();
   const ext = (file.name.split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "");
   const key = `listings/${id}.${ext}`;
-  const url = await s3Put(key, buf, file.type || "application/octet-stream");
+  const hasS3Config = !!(env.S3_BUCKET && env.S3_ENDPOINT && env.S3_ACCESS_KEY_ID && env.S3_SECRET_ACCESS_KEY);
+  const isLocalBackend = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(env.BACKEND_URL);
+  const useLocalStorage =
+    env.STORAGE_PROVIDER === "local" ||
+    (!hasS3Config && (env.NODE_ENV !== "production" || isLocalBackend));
+
+  if (!useLocalStorage && !hasS3Config) {
+    throw new Error("Storage not configured — set S3_BUCKET/S3_ENDPOINT/S3_ACCESS_KEY_ID/S3_SECRET_ACCESS_KEY");
+  }
+
+  const url = useLocalStorage
+    ? await localPut(key, buf)
+    : await s3Put(key, buf, file.type || "application/octet-stream");
+
   return {
     id,
     url,

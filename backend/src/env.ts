@@ -34,7 +34,8 @@ const envSchema = z.object({
   EMAIL_FROM: z.string().optional().default("Alcurry <onboarding@resend.dev>"),
 
   // Storage. S3-compatible (AWS S3, Cloudflare R2, MinIO).
-  STORAGE_PROVIDER: z.enum(["s3"]).optional().default("s3"),
+  STORAGE_PROVIDER: z.enum(["s3", "local"]).optional().default("s3"),
+  LOCAL_UPLOAD_DIR: z.string().optional().default("uploads"),
   S3_REGION: z.string().optional().default(""),
   S3_BUCKET: z.string().optional().default(""),
   S3_ENDPOINT: z.string().optional().default(""),

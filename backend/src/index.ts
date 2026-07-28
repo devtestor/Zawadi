@@ -127,6 +127,50 @@ app.use("*", async (c, next) => {
 // Health
 app.get("/health", (c) => c.json({ status: "ok" }));
 
+// Local development upload serving. Production should use S3_PUBLIC_URL/CDN,
+// but this keeps image uploads usable before storage credentials are present.
+app.get("/uploads/*", async (c) => {
+  const rawPath = c.req.path.replace(/^\/uploads\/?/, "");
+  let relativePath: string;
+  try {
+    relativePath = decodeURIComponent(rawPath);
+  } catch {
+    return c.json({ error: { message: "Invalid upload path" } }, 400);
+  }
+
+  if (!relativePath || relativePath.includes("\0") || relativePath.split(/[\\/]/).includes("..")) {
+    return c.json({ error: { message: "Invalid upload path" } }, 400);
+  }
+
+  const [{ readFile }, { resolve, sep, extname }] = await Promise.all([
+    import("node:fs/promises"),
+    import("node:path"),
+  ]);
+  const root = resolve(process.cwd(), env.LOCAL_UPLOAD_DIR);
+  const filePath = resolve(root, relativePath);
+  if (filePath !== root && !filePath.startsWith(`${root}${sep}`)) {
+    return c.json({ error: { message: "Invalid upload path" } }, 400);
+  }
+
+  const data = await readFile(filePath).catch(() => null);
+  if (!data) return c.json({ error: { message: "Upload not found" } }, 404);
+
+  const contentTypeByExt: Record<string, string> = {
+    ".avif": "image/avif",
+    ".gif": "image/gif",
+    ".heic": "image/heic",
+    ".heif": "image/heif",
+    ".jpeg": "image/jpeg",
+    ".jpg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+  };
+  c.header("Cache-Control", "public, max-age=31536000, immutable");
+  return c.body(data, 200, {
+    "Content-Type": contentTypeByExt[extname(filePath).toLowerCase()] || "application/octet-stream",
+  });
+});
+
 // OpenAPI spec + Scalar docs viewer
 app.get("/api/openapi.json", async (c) => {
   const { openapi } = await import("./lib/openapi");
