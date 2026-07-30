@@ -66,14 +66,17 @@ export async function pickImages(max: number): Promise<PickedImage[]> {
 
 const COOKIE_KEY = "zawadi_auth_cookie";
 
+async function readPickedImageBlob(file: PickedImage): Promise<Blob> {
+  if (file.file) return file.file;
+
+  const response = await fetch(file.uri);
+  if (!response.ok) throw new Error("Could not read selected image");
+  return response.blob();
+}
+
 async function appendPickedImage(formData: FormData, file: PickedImage) {
   if (Platform.OS === "web") {
-    const blob =
-      file.file ??
-      (await fetch(file.uri).then((response) => {
-        if (!response.ok) throw new Error("Could not read selected image");
-        return response.blob();
-      }));
+    const blob = await readPickedImageBlob(file);
     const uploadBlob =
       blob.type || typeof File === "undefined"
         ? blob
